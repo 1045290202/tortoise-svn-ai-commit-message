@@ -36,6 +36,9 @@ namespace TsvnAiCommitMessage
         /// <summary>生成过程中被用户取消（区别于失败）。</summary>
         public bool Cancelled { get; private set; }
 
+        /// <summary>用户取消/关闭窗体时触发（UI 线程），供宿主立即打断后台生成。</summary>
+        public event Action CancelRequested;
+
         public GenerationDialog()
         {
             InitializeComponent();
@@ -142,9 +145,12 @@ namespace TsvnAiCommitMessage
 
         private void SetCancelled()
         {
+            if (Cancelled) return;
             _finished = true;
             Cancelled = true;
             uiTimer.Stop();
+            var handler = CancelRequested;
+            if (handler != null) handler();
         }
 
         private void AppendColoredSafe(string text, Color color)

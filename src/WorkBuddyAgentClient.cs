@@ -61,6 +61,17 @@ namespace TsvnAiCommitMessage
                 var state = new BridgeState();
                 GenerationDialog dialog = TryCreateDialog();
 
+                if (dialog != null)
+                {
+                    // 用户取消/关窗时立即打断：杀掉桥接进程，不等下一行输出
+                    dialog.CancelRequested += () =>
+                    {
+                        state.Cancelled = true;
+                        var p = state.Process;
+                        if (p != null) KillQuietly(p);
+                    };
+                }
+
                 // 后台线程跑桥接；主线程 ShowDialog 实时展示流式内容。
                 // 生成完成后窗体停留，由用户点「填入日志框」确认才返回结果。
                 var worker = Task.Run(() => RunBridge(nodeExe, bridgeJs, requestJson, state, dialog));
