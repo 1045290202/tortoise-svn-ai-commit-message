@@ -8,12 +8,37 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 ## 当前状态
 
 - 按钮、COM 注册、回填链路：已完成
-- agent 接入：**接口已预留（`IAgentClient`），实现为空占位**
-  - 接入时实现 `IAgentClient.GenerateCommitMessage(CommitContext)`，
-    替换 `src/AiCommitMessageProvider.cs` 里的 `NullAgentClient` 即可，COM 层不用动
-  - `CommitContext` 目前含 `CommonRoot` / `PathList` / `OriginalMessage`；
-    需要 diff 内容时在此进程内调 `svn diff` 后挂到上下文上
+- agent 接入：**已完成，走 WorkBuddy CLI（`codebuddy -p`）**
+  - 调用链：`GetCommitMessage` → `WorkBuddyAgentClient`（进程内先跑 `svn diff`）
+    → 拉起 node 执行 `agent-bridge/codebuddy-bridge.js`
+    → 桥接脚本调 WorkBuddy CLI 生成提交信息 → 解析结果回填日志框
   - 生成失败或返回空字符串时，保留用户已输入的内容
+  - diff 超过 120k 字符会截断；单次生成超时约 180s
+
+### 桥接层要点（agent-bridge/codebuddy-bridge.js）
+
+- 协议：stdin 收 JSON（`commonRoot` / `pathList` / `diff` / `originalMessage`），
+  stdout 回 `{"ok":true,"message":"..."}` 或 `{"ok":false,"error":"..."}`。
+- **关键坑**：CLI 内部服务默认监听 `127.0.0.1:10003`，与 WorkBuddy 桌面端冲突时
+  进程会静默挂死（EADDRINUSE 未处理）。桥接脚本每次调用前随机挑一个空闲端口，
+  通过 `SERVER__PORT` 环境变量传给 CLI 规避。
+- CLI 解析：`-p --output-format json --no-session-persistence`，取消息数组中
+  `type === "result"` 条目的 `result` 字段。
+
+### 运行依赖
+
+- node.exe：按序探测 `WORKBUDDY_NODE` 环境变量 → `~/.workbuddy/binaries/node/versions/`（取最新）
+  → `%APPDATA%\nodejs\node.exe` → PATH。
+- bridge.js：与插件 DLL 同目录发布（`agent-bridge\codebuddy-bridge.js`，csproj 已配置随构建拷贝）。
+- CLI 路径：默认 `C:\Program Files\WorkBuddy\resources\app.asar.unpacked\cli\bin\codebuddy`，
+  可用 `WORKBUDDY_CLI_PATH` 环境变量覆盖。
+- svn.exe：注册表 `HKLM\SOFTWARE\TortoiseSVN\Directory` → PATH；不可用时无 diff 也能生成
+  （仅靠路径列表）。
+
+### 换 agent 实现方式
+
+实现 `IAgentClient.GenerateCommitMessage(CommitContext)`，替换
+`AiCommitMessageProvider` 里的 `WorkBuddyAgentClient` 即可，COM 层不用动。
 
 ## 用 Rider 打开
 

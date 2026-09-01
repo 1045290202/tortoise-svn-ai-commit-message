@@ -13,6 +13,20 @@
     <!-- 默认包含目录下全部 .cs，排除接口工程自己的文件，保持两个程序集边界 -->
     <Compile Remove="**\*.cs" />
     <Compile Include="src\AiCommitMessageProvider.cs" />
+    <Compile Include="src\WorkBuddyAgentClient.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 桥接脚本随 DLL 发布，运行时按 DLL 所在目录定位；
+         SDK 默认已包含该文件为 None，先 Remove 去重再加元数据 -->
+    <None Remove="agent-bridge\codebuddy-bridge.js" />
+    <None Include="agent-bridge\codebuddy-bridge.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
