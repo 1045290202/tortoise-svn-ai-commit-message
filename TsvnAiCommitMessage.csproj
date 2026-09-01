@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>TsvnAiCommitMessage</RootNamespace>
+    <AssemblyName>TsvnAiCommitMessage</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 默认包含目录下全部 .cs，排除接口工程自己的文件，保持两个程序集边界 -->
+    <Compile Remove="**\*.cs" />
+    <Compile Include="src\AiCommitMessageProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="IPlugin.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>Interop.BugTraqProvider</RootNamespace>
+    <AssemblyName>IPlugin</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 与 build.ps1 保持一致：接口独立程序集，插件与调用方共用同一份 -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 只编译接口文件，目录下其余 .cs 属于插件工程 -->
+    <Compile Include="src\IBugTraqProvider.cs" />
+  </ItemGroup>
+
+</Project>

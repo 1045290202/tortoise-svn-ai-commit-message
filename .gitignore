@@ -1,0 +1,8 @@
+build/
+bin/
+obj/
+*.dll
+.idea/
+.workbuddy/
+.tsvn-probe.txt
+.build-log.txt
