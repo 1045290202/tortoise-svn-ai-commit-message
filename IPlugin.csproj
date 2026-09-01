@@ -14,6 +14,7 @@
     <!-- 默认通配已包含目录下全部 .cs，排除插件工程的文件，只保留接口 -->
     <Compile Remove="src\AiCommitMessageProvider.cs" />
     <Compile Remove="src\WorkBuddyAgentClient.cs" />
+    <Compile Remove="src\GenerationDialog.cs" />
   </ItemGroup>
 
 </Project>

@@ -9,21 +9,27 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 
 - 按钮、COM 注册、回填链路：已完成
 - agent 接入：**已完成，走 WorkBuddy CLI（`codebuddy -p`）**
-  - 调用链：`GetCommitMessage` → `WorkBuddyAgentClient`（进程内先跑 `svn diff`）
-    → 拉起 node 执行 `agent-bridge/codebuddy-bridge.js`
-    → 桥接脚本调 WorkBuddy CLI 生成提交信息 → 解析结果回填日志框
-  - 生成失败或返回空字符串时，保留用户已输入的内容
+  - 调用链：`GetCommitMessage` → 弹出流式进度窗体（实时显示 AI 思考/生成内容，
+    可取消）→ `WorkBuddyAgentClient`（进程内先跑 `svn diff`）
+    → 后台拉起 node 执行 `agent-bridge/codebuddy-bridge.js`
+    → 桥接脚本以 `--output-format stream-json` 调 CLI → 逐行解析事件回填窗体
+    → 完成后自动关闭并填入日志框
+  - 生成失败、超时或用户取消时，保留用户已输入的内容
   - diff 超过 120k 字符会截断；单次生成超时约 180s
 
 ### 桥接层要点（agent-bridge/codebuddy-bridge.js）
 
 - 协议：stdin 收 JSON（`commonRoot` / `pathList` / `diff` / `originalMessage`），
-  stdout 回 `{"ok":true,"message":"..."}` 或 `{"ok":false,"error":"..."}`。
+  stdout 回**行式 JSON 事件**：
+  - `{"type":"delta","kind":"thinking","text":...}` —— AI 思考增量（弹窗灰色区）
+  - `{"type":"delta","kind":"text","text":...}` —— 生成结果增量（弹窗黑色区）
+  - `{"type":"done","message":...}` / `{"type":"error","error":...}` —— 终态
 - **关键坑**：CLI 内部服务默认监听 `127.0.0.1:10003`，与 WorkBuddy 桌面端冲突时
   进程会静默挂死（EADDRINUSE 未处理）。桥接脚本每次调用前随机挑一个空闲端口，
   通过 `SERVER__PORT` 环境变量传给 CLI 规避。
-- CLI 解析：`-p --output-format json --no-session-persistence`，取消息数组中
-  `type === "result"` 条目的 `result` 字段。
+- CLI 解析：`-p --output-format stream-json --include-partial-messages`，
+  取 `stream_event.event.delta` 的 `thinking_delta` / `text_delta`，
+  末尾 `type === "result"` 条目的 `result` 字段为最终文本。
 
 ### 运行依赖
 

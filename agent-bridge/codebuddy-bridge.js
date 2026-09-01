@@ -2,9 +2,9 @@
 /**
  * codebuddy-bridge.js —— TortoiseSVN 插件与 WorkBuddy CLI 之间的桥接进程
  *
- * 协议（stdin → stdout，均为 UTF-8 JSON）：
+ * 协议（stdin → stdout，均为 UTF-8）：
  *
- *   stdin  请求：
+ *   stdin  请求（单个 JSON）：
  *   {
  *     "commonRoot":      "E:\\repo\\wc",          // 工作副本共同根目录
  *     "pathList":        ["E:\\repo\\wc\\a.cs"],  // 变更文件列表
@@ -15,11 +15,13 @@
  *     "cliPath":         "C:\\...\\cli\\bin\\codebuddy"  // 可选，覆盖 CLI 路径
  *   }
  *
- *   stdout 响应（最后一行 JSON）：
- *   { "ok": true,  "message": "生成的提交信息" }
- *   { "ok": false, "error": "失败原因（含 CLI stderr 摘要）" }
+ *   stdout 响应（行式 JSON 事件，便于宿主流式展示）：
+ *   {"type":"delta","kind":"thinking","text":"..."}   AI 思考内容（增量）
+ *   {"type":"delta","kind":"text","text":"..."}       正式回答内容（增量）
+ *   {"type":"done","message":"..."}                   成功，message 为最终提交信息
+ *   {"type":"error","error":"..."}                    失败（含 stderr 摘要）
  *
- * 退出码：0 成功 / 1 失败。
+ *   done/error 之后进程退出；exit code 0=成功 1=失败。
  *
  * 已知坑：CLI 内部服务默认监听 127.0.0.1:10003，与 WorkBuddy 桌面端冲突会导致
  * 进程静默挂死（EADDRINUSE 未处理）。因此每次调用前随机挑一个空闲端口，
@@ -33,7 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const DEFAULT_CLI_PATH = 'codebuddy';
+const DEFAULT_CLI_PATH = 'C:\\Program Files\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy';
 const DEFAULT_TIMEOUT_MS = 180000;
 const DIFF_HARD_LIMIT = 400000; // 桥接侧二次保险：diff 超过 40 万字符截断
 
@@ -90,29 +92,8 @@ function buildPrompt(req) {
     return lines.join('\n');
 }
 
-/**
- * 从 CLI stdout 里提取最终结果。
- * CLI --output-format json 输出的是一个消息数组，最后一项形如：
- *   { "type": "result", "is_error": false, "result": "..." }
- */
-function extractResult(stdout) {
-    // stdout 可能混有非 JSON 前缀，从第一个 '[' 开始逐个尝试解析完整数组
-    let idx = stdout.indexOf('[');
-    while (idx !== -1) {
-        try {
-            const arr = JSON.parse(stdout.slice(idx));
-            for (let i = arr.length - 1; i >= 0; i--) {
-                const item = arr[i];
-                if (item && item.type === 'result') {
-                    return item; // 命中即返回
-                }
-            }
-        } catch (_) {
-            // 从下一个 '[' 重试
-        }
-        idx = stdout.indexOf('[', idx + 1);
-    }
-    return null;
+function emit(obj) {
+    try { process.stdout.write(JSON.stringify(obj) + '\n'); } catch (_) { /* 管道已断则忽略 */ }
 }
 
 // ── 主流程 ──────────────────────────────────────────────────────────────
@@ -123,7 +104,7 @@ async function main() {
     try {
         req = JSON.parse(raw || '{}');
     } catch (e) {
-        process.stdout.write(JSON.stringify({ ok: false, error: 'stdin 不是合法 JSON: ' + e.message }) + '\n');
+        emit({ type: 'error', error: 'stdin 不是合法 JSON: ' + e.message });
         process.exit(1);
     }
 
@@ -131,7 +112,7 @@ async function main() {
     const timeoutMs = Number(req.timeoutMs) > 0 ? Number(req.timeoutMs) : DEFAULT_TIMEOUT_MS;
 
     if (!fs.existsSync(cliPath)) {
-        process.stdout.write(JSON.stringify({ ok: false, error: 'CLI 不存在: ' + cliPath }) + '\n');
+        emit({ type: 'error', error: 'CLI 不存在: ' + cliPath });
         process.exit(1);
     }
 
@@ -142,7 +123,10 @@ async function main() {
     const prompt = buildPrompt(req);
     const serverPort = await pickFreePort();
 
-    const args = [cliPath, '-p', prompt, '--output-format', 'json', '--no-session-persistence'];
+    // stream-json + partial：把思考/回答增量逐行吐给宿主，供弹窗实时展示
+    const args = [cliPath, '-p', prompt,
+        '--output-format', 'stream-json', '--include-partial-messages', '--verbose',
+        '--no-session-persistence'];
     if (req.model) args.push('--model', req.model);
 
     const child = spawn(process.execPath, args, {
@@ -152,46 +136,86 @@ async function main() {
         env: Object.assign({}, process.env, { SERVER__PORT: String(serverPort) }),
     });
 
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8');
+    let stderrTail = '';
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', d => { stdout += d; });
-    child.stderr.on('data', d => { stderr += d; });
+    child.stderr.on('data', d => { stderrTail = (stderrTail + d).slice(-2000); });
 
-    let timedOut = false;
+    let sawResult = false;
     const timer = setTimeout(() => {
-        timedOut = true;
+        emit({ type: 'error', error: 'CLI 调用超时（' + Math.round(timeoutMs / 1000) + 's）' });
         child.kill('SIGKILL');
+        setTimeout(() => process.exit(1), 200);
     }, timeoutMs);
 
-    const exitCode = await new Promise(resolve => {
-        child.on('exit', (code) => resolve(code));
-        child.on('error', () => resolve(-1));
+    // 逐行解析 CLI 流式输出
+    let lineBuf = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => {
+        lineBuf += chunk;
+        let idx;
+        while ((idx = lineBuf.indexOf('\n')) !== -1) {
+            const line = lineBuf.slice(0, idx).trim();
+            lineBuf = lineBuf.slice(idx + 1);
+            if (line) handleLine(line);
+        }
     });
-    clearTimeout(timer);
+    child.stdout.on('end', () => { if (lineBuf.trim()) handleLine(lineBuf.trim()); });
 
-    const fail = (msg) => {
-        const detail = stderr.trim().slice(0, 500);
-        process.stdout.write(JSON.stringify({ ok: false, error: detail ? msg + '：' + detail : msg }) + '\n');
-        process.exit(1);
-    };
+    function handleLine(line) {
+        let msg;
+        try { msg = JSON.parse(line); } catch (_) { return; } // 跳过非 JSON 行
+        if (!msg || typeof msg !== 'object') return;
 
-    if (timedOut) fail('CLI 调用超时（' + Math.round(timeoutMs / 1000) + 's）');
-    if (exitCode !== 0) fail('CLI 退出码 ' + exitCode);
+        // 流式增量：stream_event.event.delta
+        if (msg.type === 'stream_event' && msg.event && msg.event.type === 'content_block_delta' && msg.event.delta) {
+            const d = msg.event.delta;
+            if (d.type === 'thinking_delta' && d.thinking) emit({ type: 'delta', kind: 'thinking', text: d.thinking });
+            else if (d.type === 'text_delta' && d.text) emit({ type: 'delta', kind: 'text', text: d.text });
+            return;
+        }
+        // 兜底：某些版本不发 partial，直接给完整 assistant 消息
+        if (msg.type === 'assistant' && msg.content) {
+            for (const block of msg.content) {
+                if (block && block.type === 'text' && block.text) emit({ type: 'delta', kind: 'text', text: block.text });
+                if (block && block.type === 'thinking' && block.thinking) emit({ type: 'delta', kind: 'thinking', text: block.thinking });
+            }
+            return;
+        }
+        // 最终结果
+        if (msg.type === 'result') {
+            sawResult = true;
+            clearTimeout(timer);
+            if (msg.is_error) {
+                emit({ type: 'error', error: 'CLI 返回错误' + (stderrTail ? '：' + stderrTail.trim().slice(0, 300) : '') });
+                child.kill('SIGKILL');
+                setTimeout(() => process.exit(1), 200);
+            } else if (msg.result && String(msg.result).trim()) {
+                emit({ type: 'done', message: String(msg.result).trim() });
+                child.kill('SIGKILL'); // result 已拿到，立即收尾（CLI 事件循环可能不退出）
+                setTimeout(() => process.exit(0), 200);
+            } else {
+                emit({ type: 'error', error: 'CLI 返回空提交信息' });
+                child.kill('SIGKILL');
+                setTimeout(() => process.exit(1), 200);
+            }
+        }
+    }
 
-    const result = extractResult(stdout);
-    if (!result) fail('无法从 CLI 输出解析结果');
-    if (result.is_error) fail('CLI 返回错误');
-    if (!result.result || !String(result.result).trim()) fail('CLI 返回空提交信息');
-
-    process.stdout.write(JSON.stringify({ ok: true, message: String(result.result).trim() }) + '\n');
-    process.exit(0);
+    child.on('exit', (code) => {
+        if (sawResult) return; // 已处理
+        clearTimeout(timer);
+        const detail = stderrTail.trim().slice(0, 500);
+        emit({ type: 'error', error: detail ? 'CLI 提前退出（code ' + code + '）：' + detail : 'CLI 提前退出（code ' + code + '），未返回结果' });
+        setTimeout(() => process.exit(1), 200);
+    });
+    child.on('error', (e) => {
+        clearTimeout(timer);
+        emit({ type: 'error', error: '无法启动 CLI: ' + (e && e.message) });
+        setTimeout(() => process.exit(1), 200);
+    });
 }
 
 main().catch(e => {
-    try {
-        process.stdout.write(JSON.stringify({ ok: false, error: '桥接进程异常: ' + (e && e.message) }) + '\n');
-    } catch (_) { /* ignore */ }
+    emit({ type: 'error', error: '桥接进程异常: ' + (e && e.message) });
     process.exit(1);
 });

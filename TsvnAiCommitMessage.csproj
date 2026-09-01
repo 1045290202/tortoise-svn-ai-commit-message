@@ -14,10 +14,13 @@
     <Compile Remove="**\*.cs" />
     <Compile Include="src\AiCommitMessageProvider.cs" />
     <Compile Include="src\WorkBuddyAgentClient.cs" />
+    <Compile Include="src\GenerationDialog.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>
