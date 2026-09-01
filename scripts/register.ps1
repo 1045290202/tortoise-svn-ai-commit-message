@@ -1,4 +1,4 @@
-<#
+﻿<#
 Registers or unregisters a managed TortoiseSVN issue-tracker plugin.
 
 Default scope is HKCU\Software\Classes, which Windows merges into HKEY_CLASSES_ROOT,
