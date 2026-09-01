@@ -1,0 +1,16 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Unregister Plugin" type="ShConfigurationType" folderName="register">
+    <option name="SCRIPT_TEXT" value="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$PROJECT_DIR$\scripts\register.ps1&quot; -DllPath &quot;$PROJECT_DIR$\bin\Debug\TsvnAiCommitMessage.dll&quot; -Action Unregister" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="INDEPENDENT_SCRIPT_INTERPRETER_OPTIONS" value="true" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="INTERPRETER_PATH" value="" />
+    <option name="PROJECT_PATH" value="" />
+    <option name="SCRIPT_PARAMETERS" value="" />
+    <method v="2" />
+  </configuration>
+</component>

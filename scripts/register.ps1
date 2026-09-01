@@ -55,6 +55,8 @@ $inprocKey = "$clsKey\InprocServer32"
 if ($Action -eq 'Unregister') {
     foreach ($k in @("$root\$progId", $clsKey)) { if (Test-Path $k) { Remove-Item $k -Recurse -Force } }
     Write-Output "Unregistered $clsid ($progId)"
+    Write-Output ''
+    Write-Output '==> 注销完成。若提交对话框仍显示按钮，属 TortoiseSVN 缓存，重开对话框或重启资源管理器即可。'
     return
 }
 
@@ -96,3 +98,5 @@ Write-Output "assembly     : $assemblyName"
 Write-Output "codebase     : $codebase"
 Write-Output "scope        : $root"
 Write-Output "Enable per working copy with: svn propset bugtraq:provideruuid64 $clsid <wc-path>"
+Write-Output ''
+Write-Output '==> 注册完成。重开 TortoiseSVN 提交对话框即可看到按钮（需工作副本已设置 bugtraq:provideruuid64 属性）。'
