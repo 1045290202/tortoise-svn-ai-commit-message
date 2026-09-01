@@ -19,14 +19,4 @@
     <ProjectReference Include="IPlugin.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="build\" />
-  </ItemGroup>
-
-  <!-- 类似 npm 的 postbuild 钩子：Debug 构建完成后自动注册插件（免管理员）。
-       想加自定义命令就照这个样子写 Target，用 dotnet msbuild -t:名字 单独触发。 -->
-  <Target Name="RegisterPlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\register.ps1&quot; -DllPath &quot;$(TargetPath)&quot;" />
-  </Target>
-
 </Project>

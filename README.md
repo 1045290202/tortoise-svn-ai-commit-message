@@ -22,9 +22,9 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 - `IPlugin` — COM 接口程序集（`src/IBugTraqProvider.cs`）
 - `TsvnAiCommitMessage` — 插件本体（`src/AiCommitMessageProvider.cs`），引用 IPlugin
 
-本机开发工作流：Rider 里 Build（Ctrl+Shift+B）即可，`TsvnAiCommitMessage.csproj`
-里有 `RegisterPlugin` Target（Debug 构建后自动执行注册），所以构建完成 = 插件已更新并注册，
-重开提交对话框就能看到新逻辑。自定义命令照该 Target 的样子加，`dotnet msbuild -t:名字` 单独触发。
+本机开发工作流：Rider 里 Build（Ctrl+Shift+B）编译，然后运行配置里选
+**Register Plugin** 执行注册（输出在 Run 窗口），重开提交对话框即可看到新逻辑。
+注销用 **Unregister Plugin** 配置。两个配置都在右上角下拉的 `plugin` 分组里。
 
 ## 构建与注册
 
