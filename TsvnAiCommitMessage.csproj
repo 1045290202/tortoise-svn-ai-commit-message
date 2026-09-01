@@ -10,12 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 默认包含目录下全部 .cs，排除接口工程自己的文件，保持两个程序集边界 -->
+    <!-- 插件主程序集：src 下按模块分目录（Plugin/Agent/Svn/UI/Core/Tools/Common），
+         Interop 目录的 COM 接口归 IPlugin 工程，保持两个程序集边界 -->
     <Compile Remove="**\*.cs" />
-    <Compile Include="src\AiCommitMessageProvider.cs" />
-    <Compile Include="src\WorkBuddyAgentClient.cs" />
-    <Compile Include="src\GenerationDialog.cs" />
-    <Compile Include="src\CommitDialogListReader.cs" />
+    <Compile Include="src\**\*.cs" />
+    <Compile Remove="src\Interop\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

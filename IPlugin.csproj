@@ -11,11 +11,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 默认通配已包含目录下全部 .cs，排除插件工程的文件，只保留接口 -->
-    <Compile Remove="src\AiCommitMessageProvider.cs" />
-    <Compile Remove="src\WorkBuddyAgentClient.cs" />
-    <Compile Remove="src\GenerationDialog.cs" />
-    <Compile Remove="src\CommitDialogListReader.cs" />
+    <!-- 只编译 COM 接口定义（src\Interop），插件代码归 TsvnAiCommitMessage 工程 -->
+    <Compile Remove="**\*.cs" />
+    <Compile Include="src\Interop\**\*.cs" />
   </ItemGroup>
 
 </Project>

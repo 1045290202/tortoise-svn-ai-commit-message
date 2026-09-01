@@ -16,7 +16,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace TsvnAiCommitMessage
+namespace TsvnAiCommitMessage.Svn
 {
     internal static class CommitDialogListReader
     {
