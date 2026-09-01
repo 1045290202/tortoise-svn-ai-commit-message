@@ -30,12 +30,18 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 
 日常开发：Rider Build（Ctrl+Shift+B）即可（见上节）。
 
-根目录还提供两个一键脚本（读 `bin\Debug` 产物）：
+根目录一键脚本支持配置参数（缺省 Debug）：
 
 ```cmd
-register.cmd       注册（当前用户，免管理员）
-unregister.cmd     注销
+register.cmd                注册（bin\Debug 产物）
+register.cmd Release        注册（bin\Release 产物）
+unregister.cmd              注销
+unregister.cmd Release      注销
 ```
+
+Rider 运行配置（`.run\`，团队共享）里有对应的四个：Register/Unregister Plugin
+的 Debug、Release 版本。注意注册指向哪套产物，按钮加载的就是哪套 DLL，
+切换构建配置后记得重跑对应注册。
 
 位数必须与 TortoiseSVN 宿主一致（本机为 64 位，用 `-Platform x64`）。
 对外分发时需同时提供 x86 / x64 两个版本。
