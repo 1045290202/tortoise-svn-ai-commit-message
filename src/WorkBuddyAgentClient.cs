@@ -59,19 +59,34 @@ namespace TsvnAiCommitMessage
                 var state = new BridgeState();
                 GenerationDialog dialog = TryCreateDialog();
 
-                // 后台线程跑桥接；主线程 ShowDialog 实时展示流式内容
+                // 后台线程跑桥接；主线程 ShowDialog 实时展示流式内容。
+                // 生成完成后窗体停留，由用户点「填入日志框」确认才返回结果。
                 var worker = Task.Run(() => RunBridge(nodeExe, bridgeJs, requestJson, state, dialog));
 
+                bool shown = false;
                 if (dialog != null)
                 {
-                    try { dialog.ShowDialog(); }
-                    catch (Exception) { /* 非 STA 等场景弹窗失败，退化为无 UI 等待 */ }
+                    try
+                    {
+                        dialog.ShowDialog();
+                        shown = true;
+                    }
+                    catch (Exception)
+                    {
+                        // 非 STA 等场景弹窗失败，退化为无 UI 等待
+                    }
                 }
 
-                // 窗体关闭（完成/失败/取消）后等工作线程收尾，防泄漏
-                worker.Wait(BridgeTimeoutMs + 30000);
+                worker.Wait(shown ? 15000 : BridgeTimeoutMs + 30000);
 
-                if (dialog != null && dialog.Cancelled) return null;
+                if (shown)
+                {
+                    // 只有用户点「填入日志框」（DialogResult.OK）才回填；
+                    // 取消 / 关闭 / 失败一律保留用户原输入。
+                    return dialog.DialogResult == DialogResult.OK && !string.IsNullOrEmpty(dialog.ResultMessage)
+                        ? dialog.ResultMessage
+                        : null;
+                }
                 return state.Success ? state.Result : null;
             }
             catch (Exception)
