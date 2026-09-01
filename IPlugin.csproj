@@ -15,8 +15,4 @@
     <Compile Remove="src\AiCommitMessageProvider.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="build\" />
-  </ItemGroup>
-
 </Project>
