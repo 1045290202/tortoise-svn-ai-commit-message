@@ -3,9 +3,12 @@
 // 流程：生成中实时滚动思考/结果；完成后窗体停留，由用户点「填入日志框」确认，
 //       或点「取消 / 关闭」放弃（保留提交框原输入）。
 // 只依赖 System.Windows.Forms / System.Drawing（net48 自带）。
+// 主题：跟随 TortoiseSVN 设置里的「深色主题」开关（HKCU\Software\TortoiseSVN\DarkTheme），
+//       该值不存在时回退系统应用深色模式；浅色下保持设计器默认配色。
 using System;
 using System.Drawing;
 using System.Media;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace TsvnAiCommitMessage
@@ -30,6 +33,106 @@ namespace TsvnAiCommitMessage
         private bool _thinkingSectionStarted;
         private bool _answerSectionStarted;
         private string _currentStep = "正在分析变更内容"; // 底部状态栏当前步骤文案
+
+        // ── 主题（跟随 TortoiseSVN 深色主题开关） ──────────────────────
+        private bool _isDark;
+        private Color _colTextPrimary;    // 正文/答案
+        private Color _colTextSecondary;  // 标签、思考文本
+        private Color _colSectionHeader;  // 「──── AI 思考 ────」等分隔标题
+        private Color _colStep;           // ▶ 步骤行
+        private Color _colSuccess;
+        private Color _colError;
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        /// <summary>
+        /// 跟随 TortoiseSVN 主题：优先读设置里的「深色主题」开关（HKCU\Software\TortoiseSVN\DarkTheme），
+        /// 与提交对话框同源；该值不存在（旧版本/未初始化）时回退系统应用深色模式。
+        /// </summary>
+        private static bool IsDarkThemePreferred()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\TortoiseSVN"))
+                {
+                    var v = key == null ? null : key.GetValue("DarkTheme");
+                    if (v is int) return (int)v != 0;
+                }
+            }
+            catch (Exception) { }
+            return IsSystemDarkMode();
+        }
+
+        /// <summary>读注册表判断系统应用是否处于深色模式（Win10 1809+）；读不到按浅色处理。</summary>
+        private static bool IsSystemDarkMode()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    var v = key == null ? null : key.GetValue("AppsUseLightTheme");
+                    if (v is int) return (int)v == 0;
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        /// <summary>按主题给全部控件配色（浅色 = 设计器默认值，仅深色时覆盖）。</summary>
+        private void ApplyTheme()
+        {
+            _isDark = IsDarkThemePreferred();
+            if (!_isDark)
+            {
+                _colTextPrimary = Color.Black;
+                _colTextSecondary = Color.Gray;
+                _colSectionHeader = Color.SteelBlue;
+                _colStep = Color.RoyalBlue;
+                _colSuccess = Color.SeaGreen;
+                _colError = Color.Firebrick;
+                return;
+            }
+
+            _colTextPrimary = Color.FromArgb(0xE8, 0xE8, 0xE8);
+            _colTextSecondary = Color.FromArgb(0x9A, 0x9A, 0x9A);
+            _colSectionHeader = Color.FromArgb(0x5B, 0x9B, 0xD5);
+            _colStep = Color.FromArgb(0x6F, 0xA8, 0xDC);
+            _colSuccess = Color.FromArgb(0x5F, 0xBF, 0x8F);
+            _colError = Color.FromArgb(0xF2, 0x77, 0x7A);
+
+            BackColor = Color.FromArgb(0x20, 0x20, 0x20);
+
+            logBox.BackColor = Color.FromArgb(0x1B, 0x1B, 0x1B);
+            logBox.BorderStyle = BorderStyle.FixedSingle;
+
+            fileList.BackColor = Color.FromArgb(0x1B, 0x1B, 0x1B);
+            fileList.ForeColor = _colTextPrimary;
+            fileListLabel.ForeColor = _colTextSecondary;
+
+            statusLabel.ForeColor = _colTextSecondary;
+
+            foreach (var btn in new[] { insertButton, cancelButton })
+            {
+                btn.FlatStyle = FlatStyle.Flat;
+                btn.FlatAppearance.BorderColor = Color.FromArgb(0x55, 0x55, 0x55);
+                btn.BackColor = Color.FromArgb(0x2D, 0x2D, 0x2D);
+                btn.ForeColor = _colTextPrimary;
+            }
+        }
+
+        /// <summary>深色模式下启用标题栏深色（DWMWA_USE_IMMERSIVE_DARK_MODE，老版本回退 19）。</summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (!_isDark) return;
+            foreach (var attr in new[] { 20, 19 })
+            {
+                int on = 1;
+                if (DwmSetWindowAttribute(Handle, attr, ref on, 4) == 0) break;
+            }
+        }
 
         /// <summary>用户点「填入日志框」后的提交信息；其余情况为 null。</summary>
         public string ResultMessage { get; private set; }
@@ -88,7 +191,8 @@ namespace TsvnAiCommitMessage
         public GenerationDialog()
         {
             InitializeComponent();
-            AppendColored("AI 正在分析变更内容…\n", Color.DimGray);
+            ApplyTheme();
+            AppendColored("AI 正在分析变更内容…\n", _colTextSecondary);
             uiTimer.Start();
         }
 
@@ -109,9 +213,9 @@ namespace TsvnAiCommitMessage
             if (!_thinkingSectionStarted)
             {
                 _thinkingSectionStarted = true;
-                AppendColoredSafe("\n──── AI 思考 ────\n", Color.SteelBlue);
+                AppendColoredSafe("\n──── AI 思考 ────\n", _colSectionHeader);
             }
-            AppendColoredSafe(text, Color.Gray);
+            AppendColoredSafe(text, _colTextSecondary);
         }
 
         public void AppendAnswer(string text)
@@ -119,9 +223,9 @@ namespace TsvnAiCommitMessage
             if (!_answerSectionStarted)
             {
                 _answerSectionStarted = true;
-                AppendColoredSafe("\n──── 生成结果 ────\n", Color.SteelBlue);
+                AppendColoredSafe("\n──── 生成结果 ────\n", _colSectionHeader);
             }
-            AppendColoredSafe(text, Color.Black);
+            AppendColoredSafe(text, _colTextPrimary);
         }
 
         /// <summary>工作线程报告一个大步骤的开始（日志区打一行 + 底部状态栏同步）。</summary>
@@ -131,7 +235,7 @@ namespace TsvnAiCommitMessage
             {
                 if (string.IsNullOrEmpty(text)) return;
                 _currentStep = text.TrimEnd('…', '。');
-                AppendColored("▶ " + text + "\n", Color.RoyalBlue);
+                AppendColored("▶ " + text + "\n", _colStep);
             });
         }
 
@@ -143,7 +247,7 @@ namespace TsvnAiCommitMessage
                 _finished = true;
                 ResultMessage = message;
                 uiTimer.Stop();
-                statusLabel.ForeColor = Color.SeaGreen;
+                statusLabel.ForeColor = _colSuccess;
                 statusLabel.Text = "生成完成，确认无误后点击「填入」";
                 insertButton.Enabled = true;
                 AcceptButton = insertButton;
@@ -159,9 +263,9 @@ namespace TsvnAiCommitMessage
                 _finished = true;
                 ErrorMessage = error;
                 uiTimer.Stop();
-                statusLabel.ForeColor = Color.Firebrick;
+                statusLabel.ForeColor = _colError;
                 statusLabel.Text = string.IsNullOrEmpty(error) ? "生成失败" : "生成失败：" + error;
-                AppendColoredSafe("\n[生成失败] " + statusLabel.Text + "\n", Color.Firebrick);
+                AppendColoredSafe("\n[生成失败] " + statusLabel.Text + "\n", _colError);
                 insertButton.Enabled = false;
                 cancelButton.Text = "关闭";
                 SystemSounds.Hand.Play();
