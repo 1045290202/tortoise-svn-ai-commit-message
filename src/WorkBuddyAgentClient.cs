@@ -1,7 +1,7 @@
 // WorkBuddy CLI 桥接 agent 实现 —— 接入 IAgentClient
 //
-// 链路：插件(TortoiseProc 进程内) → 弹出流式进度窗体 → 后台拉起 node 跑
-//       agent-bridge/codebuddy-bridge.js → 桥接脚本调 WorkBuddy CLI
+// 链路：插件(TortoiseProc 进程内) → 立即弹出流式进度窗体 → 后台线程获取 svn diff
+//       → 拉起 node 跑 agent-bridge/codebuddy-bridge.js → 桥接脚本调 WorkBuddy CLI
 //       （codebuddy -p --output-format stream-json）→ 逐行解析事件
 //       → 弹窗实时显示思考/回答 → done 后回填日志框。
 //
@@ -44,20 +44,6 @@ namespace TsvnAiCommitMessage
         {
             try
             {
-                string nodeExe = FindNodeExe();
-                string bridgeJs = FindBridgeScript();
-                if (nodeExe == null || bridgeJs == null)
-                    return null;
-
-                var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                string requestJson = serializer.Serialize(new Dictionary<string, object>
-                {
-                    { "commonRoot", context.CommonRoot ?? "" },
-                    { "pathList", context.PathList ?? new string[0] },
-                    { "diff", TryGetSvnDiff(context) },
-                    { "originalMessage", context.OriginalMessage ?? "" },
-                });
-
                 var state = new BridgeState();
                 GenerationDialog dialog = TryCreateDialog();
 
@@ -72,9 +58,49 @@ namespace TsvnAiCommitMessage
                     };
                 }
 
-                // 后台线程跑桥接；主线程 ShowDialog 实时展示流式内容。
+                // 后台线程跑全部耗时准备（node/svn diff 定位、svn diff、序列化）+ 桥接；
+                // 主线程立刻 ShowDialog，避免 TortoiseProc UI 因 svn diff 卡死。
                 // 生成完成后窗体停留，由用户点「填入日志框」确认才返回结果。
-                var worker = Task.Run(() => RunBridge(nodeExe, bridgeJs, requestJson, state, dialog));
+                var worker = Task.Run(() =>
+                {
+                    try
+                    {
+                        dialog?.SetStep("正在定位 node.exe 与桥接脚本…");
+                        string nodeExe = FindNodeExe();
+                        string bridgeJs = FindBridgeScript();
+                        if (nodeExe == null || bridgeJs == null)
+                        {
+                            state.Error = nodeExe == null
+                                ? "未找到可用的 node.exe"
+                                : "未找到桥接脚本 codebuddy-bridge.js";
+                            dialog?.Fail(state.Error);
+                            return;
+                        }
+
+                        dialog?.SetStep("正在获取 svn diff…");
+                        string diff = TryGetSvnDiff(context);
+                        dialog?.SetStep(diff.Length > 0
+                            ? $"diff 获取完成（{diff.Length} 字符），正在打包请求…"
+                            : "未获取到 diff，仅按路径生成，正在打包请求…");
+
+                        var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                        string requestJson = serializer.Serialize(new Dictionary<string, object>
+                        {
+                            { "commonRoot", context.CommonRoot ?? "" },
+                            { "pathList", context.PathList ?? Array.Empty<string>() },
+                            { "diff", diff },
+                            { "originalMessage", context.OriginalMessage ?? "" },
+                        });
+
+                        dialog?.SetStep("正在启动 AI 桥接进程…");
+                        RunBridge(nodeExe, bridgeJs, requestJson, state, dialog);
+                    }
+                    catch (Exception e)
+                    {
+                        state.Error = state.Error ?? ("生成准备失败: " + e.Message);
+                        try { dialog?.Fail(state.Error); } catch (Exception) { /* ignore */ }
+                    }
+                });
 
                 bool shown = false;
                 if (dialog != null)
@@ -90,7 +116,9 @@ namespace TsvnAiCommitMessage
                     }
                 }
 
-                worker.Wait(shown ? 15000 : BridgeTimeoutMs + 30000);
+                // 有 UI 时窗体已关（用户操作结束），只给工作线程 15s 收尾；
+                // 无 UI 时需完整等待：diff（≤30s）+ 桥接超时，多留余量。
+                worker.Wait(shown ? 15000 : 30000 + BridgeTimeoutMs + 30000);
 
                 if (shown)
                 {
@@ -156,6 +184,8 @@ namespace TsvnAiCommitMessage
                         stdin.Write(requestJson);
                         stdin.Close();
                     }
+
+                    dialog?.SetStep("已启动，等待 AI 输出…");
 
                     var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                     string line;

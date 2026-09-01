@@ -26,6 +26,7 @@ namespace TsvnAiCommitMessage
         private bool _finished;               // true 后不再视为取消
         private bool _thinkingSectionStarted;
         private bool _answerSectionStarted;
+        private string _currentStep = "正在分析变更内容"; // 底部状态栏当前步骤文案
 
         /// <summary>用户点「填入日志框」后的提交信息；其余情况为 null。</summary>
         public string ResultMessage { get; private set; }
@@ -76,6 +77,17 @@ namespace TsvnAiCommitMessage
                 AppendColoredSafe("\n──── 生成结果 ────\n", Color.SteelBlue);
             }
             AppendColoredSafe(text, Color.Black);
+        }
+
+        /// <summary>工作线程报告一个大步骤的开始（日志区打一行 + 底部状态栏同步）。</summary>
+        public void SetStep(string text)
+        {
+            RunOnUi(() =>
+            {
+                if (string.IsNullOrEmpty(text)) return;
+                _currentStep = text.TrimEnd('…', '。');
+                AppendColored("▶ " + text + "\n", Color.RoyalBlue);
+            });
         }
 
         /// <summary>生成成功：窗体停留，等用户点「填入日志框」确认。</summary>
@@ -132,7 +144,7 @@ namespace TsvnAiCommitMessage
         {
             if (_finished) { uiTimer.Stop(); return; }
             var seconds = (int)(DateTime.Now - _startedAt).TotalSeconds;
-            statusLabel.Text = string.Format("正在生成… 已用时 {0}s（完成后可先预览再填入）", seconds);
+            statusLabel.Text = string.Format("{0}… 已用时 {1}s", _currentStep, seconds);
         }
 
         private void GenerationDialog_FormClosing(object sender, FormClosingEventArgs e)
