@@ -19,4 +19,8 @@
     <ProjectReference Include="IPlugin.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="build\" />
+  </ItemGroup>
+
 </Project>

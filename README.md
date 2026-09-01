@@ -28,16 +28,9 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 注意 Rider 的构建配置要保持 Debug；切到 Release 构建后需手动重新注册：
 `scripts\register.ps1 -DllPath bin\Release\TsvnAiCommitMessage.dll`。
 
-`build.cmd` 是独立于 IDE 的完整构建 + 注册（系统 csc，输出到 `build\`），
-用于无 Rider 环境（如给同事打包、CI）。两条产线各自自洽，别混用 DLL。
-
 ## 构建与注册
 
-```cmd
-build.cmd          一键构建 x64 + 注册（当前用户，免管理员）
-```
-
-或手动：
+日常开发：Rider Build 即可（见上节）。无 Rider 环境时用系统 .NET Framework csc 手动构建：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 `
@@ -83,7 +76,7 @@ Start-Process "$dir\bin\TortoiseProc.exe" -ArgumentList '/command:commit', "/pat
 ## 卸载
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register.ps1 -DllPath build\TsvnAiCommitMessage.dll -Action Unregister
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register.ps1 -DllPath bin\Debug\TsvnAiCommitMessage.dll -Action Unregister
 svn propdel bugtraq:provideruuid64 <wc路径>
 ```
 

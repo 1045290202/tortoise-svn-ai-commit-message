@@ -8,7 +8,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TsvnAiCommitMessage", "Tsvn
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D}"
 	ProjectSection(SolutionItems) = preProject
-		build.cmd = build.cmd
 		scripts\build.ps1 = scripts\build.ps1
 		scripts\register.ps1 = scripts\register.ps1
 		README.md = README.md
