@@ -15,7 +15,6 @@
     <Compile Include="src\AiCommitMessageProvider.cs" />
     <Compile Include="src\WorkBuddyAgentClient.cs" />
     <Compile Include="src\GenerationDialog.cs" />
-    <Compile Include="src\GenerationDialog.Designer.cs" />
   </ItemGroup>
 
   <ItemGroup>

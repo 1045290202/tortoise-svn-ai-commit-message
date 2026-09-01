@@ -1,5 +1,5 @@
-// AI 生成提交信息 —— 流式进度弹窗（行为逻辑）
-// 布局控件在 GenerationDialog.Designer.cs 的 InitializeComponent 里，设计器可见可调。
+// AI 生成提交信息 —— 流式进度弹窗
+// 布局控件在下方 InitializeComponent（Rider/VS 设计器序列化目标就是本文件，可调）。
 // 流程：生成中实时滚动思考/结果；完成后窗体停留，由用户点「填入日志框」确认，
 //       或点「取消 / 关闭」放弃（保留提交框原输入）。
 // 只依赖 System.Windows.Forms / System.Drawing（net48 自带）。
@@ -10,8 +10,17 @@ using System.Windows.Forms;
 
 namespace TsvnAiCommitMessage
 {
-    internal partial class GenerationDialog : Form
+    internal class GenerationDialog : Form
     {
+        private System.ComponentModel.IContainer components = null;
+
+        private System.Windows.Forms.RichTextBox logBox;
+        private System.Windows.Forms.Panel bottomPanel;
+        private System.Windows.Forms.Label statusLabel;
+        private System.Windows.Forms.Button insertButton;
+        private System.Windows.Forms.Button cancelButton;
+        private System.Windows.Forms.Timer uiTimer;
+
         private readonly DateTime _startedAt = DateTime.Now;
 
         private bool _finished;               // true 后不再视为取消
@@ -32,6 +41,16 @@ namespace TsvnAiCommitMessage
             InitializeComponent();
             AppendColored("AI 正在分析变更内容…\n", Color.DimGray);
             uiTimer.Start();
+        }
+
+        /// <summary>清理所有正在使用的资源。</summary>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && (components != null))
+            {
+                components.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         // ── 工作线程调用入口（内部自行跨线程封送） ────────────────────
@@ -56,7 +75,7 @@ namespace TsvnAiCommitMessage
             AppendColoredSafe(text, Color.Black);
         }
 
-        /// <summary>生成成功：窗体不停留关闭，等用户确认后手动填入。</summary>
+        /// <summary>生成成功：窗体停留，等用户点「填入日志框」确认。</summary>
         public void Complete(string message)
         {
             RunOnUi(() =>
@@ -90,7 +109,7 @@ namespace TsvnAiCommitMessage
             });
         }
 
-        // ── 事件处理（Designer 绑定） ──────────────────────────────────
+        // ── 事件处理（设计器绑定） ─────────────────────────────────────
 
         private void insertButton_Click(object sender, EventArgs e)
         {
@@ -154,6 +173,116 @@ namespace TsvnAiCommitMessage
             logBox.AppendText(text);
             logBox.SelectionStart = logBox.TextLength;
             logBox.ScrollToCaret();
+        }
+
+        /// <summary>
+        /// Required method for Designer support - do not modify
+        /// the contents of this method with the code editor.
+        /// </summary>
+        private void InitializeComponent()
+        {
+            this.components = new System.ComponentModel.Container();
+            this.logBox = new System.Windows.Forms.RichTextBox();
+            this.bottomPanel = new System.Windows.Forms.Panel();
+            this.statusLabel = new System.Windows.Forms.Label();
+            this.insertButton = new System.Windows.Forms.Button();
+            this.cancelButton = new System.Windows.Forms.Button();
+            this.uiTimer = new System.Windows.Forms.Timer(this.components);
+            this.bottomPanel.SuspendLayout();
+            this.SuspendLayout();
+            //
+            // logBox
+            //
+            this.logBox.BackColor = System.Drawing.Color.White;
+            this.logBox.DetectUrls = false;
+            this.logBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.logBox.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
+            this.logBox.Location = new System.Drawing.Point(10, 8);
+            this.logBox.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.logBox.Name = "logBox";
+            this.logBox.ReadOnly = true;
+            this.logBox.Size = new System.Drawing.Size(564, 319);
+            this.logBox.TabIndex = 0;
+            this.logBox.Text = "";
+            //
+            // bottomPanel
+            //
+            this.bottomPanel.Controls.Add(this.statusLabel);
+            this.bottomPanel.Controls.Add(this.insertButton);
+            this.bottomPanel.Controls.Add(this.cancelButton);
+            this.bottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.bottomPanel.Location = new System.Drawing.Point(10, 327);
+            this.bottomPanel.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.bottomPanel.Name = "bottomPanel";
+            this.bottomPanel.Padding = new System.Windows.Forms.Padding(0, 6, 0, 6);
+            this.bottomPanel.Size = new System.Drawing.Size(564, 44);
+            this.bottomPanel.TabIndex = 1;
+            //
+            // statusLabel
+            //
+            this.statusLabel.AutoSize = true;
+            this.statusLabel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.statusLabel.ForeColor = System.Drawing.Color.DimGray;
+            this.statusLabel.Location = new System.Drawing.Point(0, 6);
+            this.statusLabel.Name = "statusLabel";
+            this.statusLabel.Size = new System.Drawing.Size(65, 12);
+            this.statusLabel.TabIndex = 0;
+            this.statusLabel.Text = "正在生成…";
+            this.statusLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            //
+            // insertButton
+            //
+            this.insertButton.Dock = System.Windows.Forms.DockStyle.Right;
+            this.insertButton.Enabled = false;
+            this.insertButton.Location = new System.Drawing.Point(370, 6);
+            this.insertButton.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.insertButton.Name = "insertButton";
+            this.insertButton.Size = new System.Drawing.Size(110, 32);
+            this.insertButton.TabIndex = 1;
+            this.insertButton.Text = "填入日志框";
+            this.insertButton.UseVisualStyleBackColor = true;
+            this.insertButton.Click += new System.EventHandler(this.insertButton_Click);
+            //
+            // cancelButton
+            //
+            this.cancelButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.cancelButton.Dock = System.Windows.Forms.DockStyle.Right;
+            this.cancelButton.Location = new System.Drawing.Point(488, 6);
+            this.cancelButton.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.cancelButton.Name = "cancelButton";
+            this.cancelButton.Size = new System.Drawing.Size(76, 32);
+            this.cancelButton.TabIndex = 2;
+            this.cancelButton.Text = "取消";
+            this.cancelButton.UseVisualStyleBackColor = true;
+            this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
+            //
+            // uiTimer
+            //
+            this.uiTimer.Interval = 1000;
+            this.uiTimer.Tick += new System.EventHandler(this.uiTimer_Tick);
+            //
+            // GenerationDialog
+            //
+            this.AcceptButton = this.insertButton;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.CancelButton = this.cancelButton;
+            this.ClientSize = new System.Drawing.Size(584, 381);
+            this.Controls.Add(this.logBox);
+            this.Controls.Add(this.bottomPanel);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
+            this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.Name = "GenerationDialog";
+            this.Padding = new System.Windows.Forms.Padding(10, 8, 10, 8);
+            this.ShowInTaskbar = false;
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            this.Text = "AI生成提交信息";
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.GenerationDialog_FormClosing);
+            this.bottomPanel.ResumeLayout(false);
+            this.bottomPanel.PerformLayout();
+            this.ResumeLayout(false);
         }
     }
 }
