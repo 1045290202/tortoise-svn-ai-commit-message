@@ -15,6 +15,9 @@ namespace TsvnAiCommitMessage
         private System.ComponentModel.IContainer components = null;
 
         private System.Windows.Forms.RichTextBox logBox;
+        private System.Windows.Forms.Panel fileListPanel;
+        private System.Windows.Forms.Label fileListLabel;
+        private System.Windows.Forms.ListBox fileList;
         private System.Windows.Forms.Panel bottomPanel;
         private System.Windows.Forms.Label statusLabel;
         private System.Windows.Forms.Button insertButton;
@@ -39,6 +42,48 @@ namespace TsvnAiCommitMessage
 
         /// <summary>用户取消/关闭窗体时触发（UI 线程），供宿主立即打断后台生成。</summary>
         public event Action CancelRequested;
+
+        /// <summary>
+        /// 展示本次待提交的文件列表（提交对话框中勾选的变更项）。
+        /// 在 ShowDialog 之前于 UI 线程调用；pathList 为空时不显示该区域。
+        /// </summary>
+        public void SetCommitFiles(string commonRoot, string[] pathList)
+        {
+            if (pathList == null || pathList.Length == 0)
+            {
+                fileListPanel.Visible = false;
+                return;
+            }
+
+            fileList.BeginUpdate();
+            try
+            {
+                foreach (var path in pathList)
+                    fileList.Items.Add(MakeDisplayPath(commonRoot, path));
+            }
+            finally
+            {
+                fileList.EndUpdate();
+            }
+            fileListLabel.Text = "待提交文件（" + pathList.Length + "）";
+        }
+
+        /// <summary>把绝对路径转成相对 commonRoot 的展示路径；转不动就原样显示。</summary>
+        private static string MakeDisplayPath(string commonRoot, string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(commonRoot) || string.IsNullOrEmpty(path)) return path;
+                var rootUri = new Uri(commonRoot.TrimEnd('\\') + "\\");
+                var pathUri = new Uri(path);
+                if (!rootUri.IsBaseOf(pathUri)) return path;
+                return Uri.UnescapeDataString(rootUri.MakeRelativeUri(pathUri).ToString()).Replace('/', '\\');
+            }
+            catch (Exception)
+            {
+                return path;
+            }
+        }
 
         public GenerationDialog()
         {
@@ -99,10 +144,9 @@ namespace TsvnAiCommitMessage
                 ResultMessage = message;
                 uiTimer.Stop();
                 statusLabel.ForeColor = Color.SeaGreen;
-                statusLabel.Text = "生成完成，确认无误后点击「填入日志框」";
+                statusLabel.Text = "生成完成，确认无误后点击「填入」";
                 insertButton.Enabled = true;
                 AcceptButton = insertButton;
-                cancelButton.Text = "取消（不填入）";
                 SystemSounds.Asterisk.Play();
             });
         }
@@ -201,27 +245,67 @@ namespace TsvnAiCommitMessage
         {
             this.components = new System.ComponentModel.Container();
             this.logBox = new System.Windows.Forms.RichTextBox();
+            this.fileListPanel = new System.Windows.Forms.Panel();
+            this.fileList = new System.Windows.Forms.ListBox();
+            this.fileListLabel = new System.Windows.Forms.Label();
             this.bottomPanel = new System.Windows.Forms.Panel();
             this.statusLabel = new System.Windows.Forms.Label();
             this.insertButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.uiTimer = new System.Windows.Forms.Timer(this.components);
+            this.fileListPanel.SuspendLayout();
             this.bottomPanel.SuspendLayout();
             this.SuspendLayout();
             //
             // logBox
             //
             this.logBox.BackColor = System.Drawing.Color.White;
+            this.logBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.logBox.DetectUrls = false;
             this.logBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.logBox.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
-            this.logBox.Location = new System.Drawing.Point(10, 8);
+            this.logBox.Location = new System.Drawing.Point(10, 140);
             this.logBox.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.logBox.Name = "logBox";
             this.logBox.ReadOnly = true;
-            this.logBox.Size = new System.Drawing.Size(564, 319);
+            this.logBox.Size = new System.Drawing.Size(564, 268);
             this.logBox.TabIndex = 0;
             this.logBox.Text = "";
+            //
+            // fileListPanel
+            //
+            this.fileListPanel.Controls.Add(this.fileList);
+            this.fileListPanel.Controls.Add(this.fileListLabel);
+            this.fileListPanel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.fileListPanel.Location = new System.Drawing.Point(10, 8);
+            this.fileListPanel.Name = "fileListPanel";
+            this.fileListPanel.Padding = new System.Windows.Forms.Padding(0, 0, 0, 4);
+            this.fileListPanel.Size = new System.Drawing.Size(564, 132);
+            this.fileListPanel.TabIndex = 2;
+            //
+            // fileList
+            //
+            this.fileList.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.fileList.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.fileList.Font = new System.Drawing.Font("Consolas", 9F);
+            this.fileList.FormattingEnabled = true;
+            this.fileList.IntegralHeight = false;
+            this.fileList.ItemHeight = 14;
+            this.fileList.Location = new System.Drawing.Point(0, 12);
+            this.fileList.Name = "fileList";
+            this.fileList.Size = new System.Drawing.Size(564, 116);
+            this.fileList.TabIndex = 1;
+            //
+            // fileListLabel
+            //
+            this.fileListLabel.AutoSize = true;
+            this.fileListLabel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.fileListLabel.ForeColor = System.Drawing.Color.DimGray;
+            this.fileListLabel.Location = new System.Drawing.Point(0, 0);
+            this.fileListLabel.Name = "fileListLabel";
+            this.fileListLabel.Size = new System.Drawing.Size(65, 12);
+            this.fileListLabel.TabIndex = 0;
+            this.fileListLabel.Text = "待提交文件";
             //
             // bottomPanel
             //
@@ -229,7 +313,7 @@ namespace TsvnAiCommitMessage
             this.bottomPanel.Controls.Add(this.insertButton);
             this.bottomPanel.Controls.Add(this.cancelButton);
             this.bottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.bottomPanel.Location = new System.Drawing.Point(10, 327);
+            this.bottomPanel.Location = new System.Drawing.Point(10, 408);
             this.bottomPanel.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.bottomPanel.Name = "bottomPanel";
             this.bottomPanel.Padding = new System.Windows.Forms.Padding(0, 6, 0, 6);
@@ -252,12 +336,12 @@ namespace TsvnAiCommitMessage
             //
             this.insertButton.Dock = System.Windows.Forms.DockStyle.Right;
             this.insertButton.Enabled = false;
-            this.insertButton.Location = new System.Drawing.Point(370, 6);
+            this.insertButton.Location = new System.Drawing.Point(412, 6);
             this.insertButton.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.insertButton.Name = "insertButton";
-            this.insertButton.Size = new System.Drawing.Size(110, 32);
+            this.insertButton.Size = new System.Drawing.Size(76, 32);
             this.insertButton.TabIndex = 1;
-            this.insertButton.Text = "填入日志框";
+            this.insertButton.Text = "填入";
             this.insertButton.UseVisualStyleBackColor = true;
             this.insertButton.Click += new System.EventHandler(this.insertButton_Click);
             //
@@ -285,9 +369,10 @@ namespace TsvnAiCommitMessage
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.cancelButton;
-            this.ClientSize = new System.Drawing.Size(584, 381);
+            this.ClientSize = new System.Drawing.Size(584, 460);
             this.Controls.Add(this.logBox);
             this.Controls.Add(this.bottomPanel);
+            this.Controls.Add(this.fileListPanel);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.MaximizeBox = false;
@@ -298,6 +383,8 @@ namespace TsvnAiCommitMessage
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "AI生成提交信息";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.GenerationDialog_FormClosing);
+            this.fileListPanel.ResumeLayout(false);
+            this.fileListPanel.PerformLayout();
             this.bottomPanel.ResumeLayout(false);
             this.bottomPanel.PerformLayout();
             this.ResumeLayout(false);

@@ -15,6 +15,7 @@
     <Compile Remove="src\AiCommitMessageProvider.cs" />
     <Compile Remove="src\WorkBuddyAgentClient.cs" />
     <Compile Remove="src\GenerationDialog.cs" />
+    <Compile Remove="src\CommitDialogListReader.cs" />
   </ItemGroup>
 
 </Project>

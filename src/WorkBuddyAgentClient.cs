@@ -49,6 +49,9 @@ namespace TsvnAiCommitMessage
 
                 if (dialog != null)
                 {
+                    // 顶部展示本次勾选的待提交文件列表（主线程调用，先于 ShowDialog）
+                    dialog.SetCommitFiles(context.CommonRoot, context.PathList);
+
                     // 用户取消/关窗时立即打断：杀掉桥接进程，不等下一行输出
                     dialog.CancelRequested += () =>
                     {
