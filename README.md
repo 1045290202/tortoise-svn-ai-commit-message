@@ -31,6 +31,13 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 
 日常开发：Rider Build（Ctrl+Shift+B）即可（见上节）。
 
+根目录还提供两个一键脚本（读 `bin\Debug` 产物）：
+
+```cmd
+register.cmd       注册（当前用户，免管理员）
+unregister.cmd     注销
+```
+
 位数必须与 TortoiseSVN 宿主一致（本机为 64 位，用 `-Platform x64`）。
 对外分发时需同时提供 x86 / x64 两个版本。
 
@@ -65,6 +72,8 @@ Start-Process "$dir\bin\TortoiseProc.exe" -ArgumentList '/command:commit', "/pat
 日志框内容不变。按钮不出现时用 `reg query HKCU\Software\Classes\CLSID\{A6F0E69F-1C6E-4C32-8FE3-A46F87825DFC}` 排查注册。
 
 ## 卸载
+
+双击 `unregister.cmd`，或手动：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register.ps1 -DllPath bin\Debug\TsvnAiCommitMessage.dll -Action Unregister
