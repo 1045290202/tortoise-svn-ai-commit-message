@@ -3,8 +3,7 @@
 TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一个「AI生成提交信息」按钮，
 点击后由 agent 生成提交信息并回填到日志框。
 
-基于 `IBugtraqProvider` COM 接口（.NET 实现，无需 Visual Studio，用系统自带的
-.NET Framework 4.x 编译器构建）。
+基于 `IBugtraqProvider` COM 接口（.NET 实现，用 Rider / MSBuild 构建）。
 
 ## 当前状态
 
@@ -30,15 +29,7 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 
 ## 构建与注册
 
-日常开发：Rider Build 即可（见上节）。无 Rider 环境时用系统 .NET Framework csc 手动构建：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 `
-    -InterfaceSrc src\IBugTraqProvider.cs `
-    -PluginSrc src\AiCommitMessageProvider.cs `
-    -OutDir build -PluginAssembly TsvnAiCommitMessage -Platform x64
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register.ps1 -DllPath build\TsvnAiCommitMessage.dll
-```
+日常开发：Rider Build（Ctrl+Shift+B）即可（见上节）。
 
 位数必须与 TortoiseSVN 宿主一致（本机为 64 位，用 `-Platform x64`）。
 对外分发时需同时提供 x86 / x64 两个版本。
