@@ -11,8 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 只编译接口文件，目录下其余 .cs 属于插件工程 -->
-    <Compile Include="src\IBugTraqProvider.cs" />
+    <!-- 默认通配已包含目录下全部 .cs，先排除插件工程自己的文件，只保留接口 -->
+    <Compile Remove="src\AiCommitMessageProvider.cs" />
   </ItemGroup>
 
 </Project>
