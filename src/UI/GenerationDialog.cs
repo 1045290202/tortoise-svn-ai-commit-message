@@ -4,9 +4,15 @@
 //       或点「取消 / 关闭」放弃（保留提交框原输入）。
 // 只依赖 System.Windows.Forms / System.Drawing（net48 自带）。
 // 主题：配色取自 DialogTheme（跟随 TortoiseSVN 设置里的「深色主题」开关）；
-//       浅色下保持设计器默认配色，仅深色时覆盖控件底色。
+//       不随主题变的配置（FlatStyle/边框/字体/布局）全部在 InitializeComponent，
+//       ApplyTheme 只覆盖颜色，保证设计器可见完整静态样式；
+//       按钮模仿 TSVN 本体深色按钮（两枚同款：深灰底 + 细描边，无 accent 主次色），
+//       并用自绘 RoundedButton 画出 TSVN 风格的圆角描边（系统标准按钮是直角的）。
+// 布局：mainSplit 上（文件列表）下（日志）可拖分隔条，窗口可缩放，比例跟随变化。
+// 警告：Rider 设计器不要打开本窗体（旧缓冲保存会整文件回写，多次冲掉改动）。
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Media;
 using System.Windows.Forms;
 using TsvnAiCommitMessage.Common;
@@ -17,6 +23,7 @@ namespace TsvnAiCommitMessage.UI
     {
         private System.ComponentModel.IContainer components = null;
 
+        private System.Windows.Forms.SplitContainer mainSplit;
         private System.Windows.Forms.RichTextBox logBox;
         private System.Windows.Forms.Panel fileListPanel;
         private System.Windows.Forms.Label fileListLabel;
@@ -68,29 +75,40 @@ namespace TsvnAiCommitMessage.UI
 
         // ── 主题 ────────────────────────────────────────────────────────
 
-        /// <summary>按主题给全部控件配色（浅色 = 设计器默认值，仅深色时覆盖）。</summary>
+        /// <summary>按主题给控件配色（布局/样式骨架在 InitializeComponent；此处只动随主题变化的颜色）。</summary>
         private void ApplyTheme()
         {
             var c = _theme.Colors;
-            if (!_theme.IsDark) return;
+            bool dark = _theme.IsDark;
 
-            BackColor = Color.FromArgb(0x20, 0x20, 0x20);
+            Color formBack = dark ? Color.FromArgb(0x20, 0x20, 0x20) : SystemColors.Control;
+            Color surface  = dark ? Color.FromArgb(0x1B, 0x1B, 0x1B) : Color.White;
+            Color secondaryFore = dark ? c.TextSecondary : Color.DimGray;
 
-            logBox.BackColor = Color.FromArgb(0x1B, 0x1B, 0x1B);
-            logBox.BorderStyle = BorderStyle.FixedSingle;
+            BackColor = formBack;
+            mainSplit.BackColor = formBack; // 分隔条随窗体底色
 
-            fileList.BackColor = Color.FromArgb(0x1B, 0x1B, 0x1B);
-            fileList.ForeColor = c.TextPrimary;
-            fileListLabel.ForeColor = c.TextSecondary;
+            logBox.BackColor = surface;
 
-            statusLabel.ForeColor = c.TextSecondary;
+            fileList.BackColor = surface;
+            fileList.ForeColor = dark ? c.TextPrimary : SystemColors.WindowText;
+            fileListLabel.ForeColor = secondaryFore;
 
+            statusLabel.ForeColor = secondaryFore;
+
+            // 按钮统一 TSVN 原生风：两枚同款（无 accent 主次色差），底色 + 细描边 + hover 微亮
+            Color btnBack   = dark ? Color.FromArgb(0x41, 0x41, 0x41) : Color.White;
+            Color btnBorder = dark ? Color.FromArgb(0x5A, 0x5A, 0x5A) : Color.FromArgb(0xAD, 0xAD, 0xAD);
+            Color btnText   = dark ? c.TextPrimary : Color.FromArgb(0x33, 0x33, 0x33);
+            Color btnHover  = dark ? Color.FromArgb(0x4D, 0x4D, 0x4D) : Color.FromArgb(0xE5, 0xE5, 0xE5);
+            Color btnDown   = dark ? Color.FromArgb(0x58, 0x58, 0x58) : Color.FromArgb(0xD5, 0xD5, 0xD5);
             foreach (var btn in new[] { insertButton, cancelButton })
             {
-                btn.FlatStyle = FlatStyle.Flat;
-                btn.FlatAppearance.BorderColor = Color.FromArgb(0x55, 0x55, 0x55);
-                btn.BackColor = Color.FromArgb(0x2D, 0x2D, 0x2D);
-                btn.ForeColor = c.TextPrimary;
+                btn.FlatAppearance.BorderColor = btnBorder;
+                btn.FlatAppearance.MouseOverBackColor = btnHover;
+                btn.FlatAppearance.MouseDownBackColor = btnDown;
+                btn.BackColor = btnBack;
+                btn.ForeColor = btnText;
             }
         }
 
@@ -112,8 +130,10 @@ namespace TsvnAiCommitMessage.UI
             if (pathList == null || pathList.Length == 0)
             {
                 fileListPanel.Visible = false;
+                mainSplit.Panel1Collapsed = true; // 无文件时折叠整个上区（含分隔条）
                 return;
             }
+            mainSplit.Panel1Collapsed = false;
 
             fileList.BeginUpdate();
             try
@@ -276,18 +296,38 @@ namespace TsvnAiCommitMessage.UI
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
+            this.mainSplit = new System.Windows.Forms.SplitContainer();
             this.logBox = new System.Windows.Forms.RichTextBox();
             this.fileListPanel = new System.Windows.Forms.Panel();
             this.fileList = new System.Windows.Forms.ListBox();
             this.fileListLabel = new System.Windows.Forms.Label();
             this.bottomPanel = new System.Windows.Forms.Panel();
             this.statusLabel = new System.Windows.Forms.Label();
-            this.insertButton = new System.Windows.Forms.Button();
-            this.cancelButton = new System.Windows.Forms.Button();
+            this.insertButton = new RoundedButton();
+            this.cancelButton = new RoundedButton();
             this.uiTimer = new System.Windows.Forms.Timer(this.components);
+            this.mainSplit.Panel1.SuspendLayout();
+            this.mainSplit.Panel2.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.mainSplit)).BeginInit();
             this.fileListPanel.SuspendLayout();
             this.bottomPanel.SuspendLayout();
             this.SuspendLayout();
+            //
+            // mainSplit（上：文件列表，下：日志；比例跟随窗口缩放）
+            //
+            this.mainSplit.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.mainSplit.FixedPanel = System.Windows.Forms.FixedPanel.None;
+            this.mainSplit.Location = new System.Drawing.Point(12, 10);
+            this.mainSplit.Name = "mainSplit";
+            this.mainSplit.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            this.mainSplit.Panel1.Controls.Add(this.fileListPanel);
+            this.mainSplit.Panel1MinSize = 48;
+            this.mainSplit.Panel2.Controls.Add(this.logBox);
+            this.mainSplit.Panel2MinSize = 120;
+            this.mainSplit.Size = new System.Drawing.Size(560, 392);
+            this.mainSplit.SplitterDistance = 140;
+            this.mainSplit.SplitterWidth = 6;
+            this.mainSplit.TabIndex = 3;
             //
             // logBox
             //
@@ -296,11 +336,10 @@ namespace TsvnAiCommitMessage.UI
             this.logBox.DetectUrls = false;
             this.logBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.logBox.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
-            this.logBox.Location = new System.Drawing.Point(10, 140);
-            this.logBox.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.logBox.Location = new System.Drawing.Point(0, 0);
             this.logBox.Name = "logBox";
             this.logBox.ReadOnly = true;
-            this.logBox.Size = new System.Drawing.Size(564, 268);
+            this.logBox.Size = new System.Drawing.Size(560, 246);
             this.logBox.TabIndex = 0;
             this.logBox.Text = "";
             //
@@ -308,11 +347,11 @@ namespace TsvnAiCommitMessage.UI
             //
             this.fileListPanel.Controls.Add(this.fileList);
             this.fileListPanel.Controls.Add(this.fileListLabel);
-            this.fileListPanel.Dock = System.Windows.Forms.DockStyle.Top;
-            this.fileListPanel.Location = new System.Drawing.Point(10, 8);
+            this.fileListPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.fileListPanel.Location = new System.Drawing.Point(0, 0);
             this.fileListPanel.Name = "fileListPanel";
             this.fileListPanel.Padding = new System.Windows.Forms.Padding(0, 0, 0, 4);
-            this.fileListPanel.Size = new System.Drawing.Size(564, 132);
+            this.fileListPanel.Size = new System.Drawing.Size(560, 140);
             this.fileListPanel.TabIndex = 2;
             //
             // fileList
@@ -322,73 +361,78 @@ namespace TsvnAiCommitMessage.UI
             this.fileList.Font = new System.Drawing.Font("Consolas", 9F);
             this.fileList.FormattingEnabled = true;
             this.fileList.IntegralHeight = false;
-            this.fileList.ItemHeight = 14;
-            this.fileList.Location = new System.Drawing.Point(0, 12);
+            this.fileList.ItemHeight = 15;
+            this.fileList.Location = new System.Drawing.Point(0, 18);
             this.fileList.Name = "fileList";
-            this.fileList.Size = new System.Drawing.Size(564, 116);
+            this.fileList.Size = new System.Drawing.Size(560, 118);
             this.fileList.TabIndex = 1;
             //
             // fileListLabel
             //
             this.fileListLabel.AutoSize = true;
             this.fileListLabel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.fileListLabel.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
             this.fileListLabel.ForeColor = System.Drawing.Color.DimGray;
             this.fileListLabel.Location = new System.Drawing.Point(0, 0);
             this.fileListLabel.Name = "fileListLabel";
-            this.fileListLabel.Size = new System.Drawing.Size(65, 12);
+            this.fileListLabel.Size = new System.Drawing.Size(69, 17);
             this.fileListLabel.TabIndex = 0;
             this.fileListLabel.Text = "待提交文件";
             //
-            // bottomPanel
+            // bottomPanel（statusLabel 最后 Add = z-order 最底，避免盖住锚定的按钮）
             //
-            this.bottomPanel.Controls.Add(this.statusLabel);
-            this.bottomPanel.Controls.Add(this.insertButton);
             this.bottomPanel.Controls.Add(this.cancelButton);
+            this.bottomPanel.Controls.Add(this.insertButton);
+            this.bottomPanel.Controls.Add(this.statusLabel);
             this.bottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.bottomPanel.Location = new System.Drawing.Point(10, 408);
-            this.bottomPanel.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.bottomPanel.Location = new System.Drawing.Point(12, 412);
             this.bottomPanel.Name = "bottomPanel";
-            this.bottomPanel.Padding = new System.Windows.Forms.Padding(0, 6, 0, 6);
-            this.bottomPanel.Size = new System.Drawing.Size(564, 44);
+            this.bottomPanel.Padding = new System.Windows.Forms.Padding(0, 8, 0, 8);
+            this.bottomPanel.Size = new System.Drawing.Size(560, 48);
             this.bottomPanel.TabIndex = 1;
             //
             // statusLabel
             //
-            this.statusLabel.AutoSize = true;
+            this.statusLabel.AutoSize = false;
             this.statusLabel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.statusLabel.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
             this.statusLabel.ForeColor = System.Drawing.Color.DimGray;
-            this.statusLabel.Location = new System.Drawing.Point(0, 6);
+            this.statusLabel.Location = new System.Drawing.Point(0, 8);
             this.statusLabel.Name = "statusLabel";
-            this.statusLabel.Size = new System.Drawing.Size(65, 12);
+            this.statusLabel.Size = new System.Drawing.Size(368, 32);
             this.statusLabel.TabIndex = 0;
             this.statusLabel.Text = "正在生成…";
             this.statusLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             //
-            // insertButton
+            // insertButton（锚定右上、固定尺寸）
             //
-            this.insertButton.Dock = System.Windows.Forms.DockStyle.Right;
+            this.insertButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.insertButton.Enabled = false;
-            this.insertButton.Location = new System.Drawing.Point(412, 6);
-            this.insertButton.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.insertButton.FlatAppearance.BorderSize = 0;
+            this.insertButton.FlatStyle = System.Windows.Forms.FlatStyle.Standard;
+            this.insertButton.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
+            this.insertButton.Location = new System.Drawing.Point(356, 10);
             this.insertButton.Name = "insertButton";
-            this.insertButton.Size = new System.Drawing.Size(76, 32);
+            this.insertButton.Size = new System.Drawing.Size(92, 28);
             this.insertButton.TabIndex = 1;
             this.insertButton.Text = "填入";
-            this.insertButton.UseVisualStyleBackColor = true;
+            this.insertButton.UseVisualStyleBackColor = false;
             this.insertButton.UseWaitCursor = true;
             this.insertButton.Click += new System.EventHandler(this.insertButton_Click);
             //
-            // cancelButton
+            // cancelButton（锚定右上、固定尺寸）
             //
+            this.cancelButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.cancelButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.cancelButton.Dock = System.Windows.Forms.DockStyle.Right;
-            this.cancelButton.Location = new System.Drawing.Point(488, 6);
-            this.cancelButton.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.cancelButton.FlatAppearance.BorderSize = 0;
+            this.cancelButton.FlatStyle = System.Windows.Forms.FlatStyle.Standard;
+            this.cancelButton.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
+            this.cancelButton.Location = new System.Drawing.Point(456, 10);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(76, 32);
+            this.cancelButton.Size = new System.Drawing.Size(92, 28);
             this.cancelButton.TabIndex = 2;
             this.cancelButton.Text = "取消";
-            this.cancelButton.UseVisualStyleBackColor = true;
+            this.cancelButton.UseVisualStyleBackColor = false;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             //
             // uiTimer
@@ -403,24 +447,93 @@ namespace TsvnAiCommitMessage.UI
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.cancelButton;
             this.ClientSize = new System.Drawing.Size(584, 460);
-            this.Controls.Add(this.logBox);
+            this.Controls.Add(this.mainSplit);
             this.Controls.Add(this.bottomPanel);
-            this.Controls.Add(this.fileListPanel);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
             this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.MaximizeBox = false;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(600, 500);
             this.Name = "GenerationDialog";
-            this.Padding = new System.Windows.Forms.Padding(10, 8, 10, 8);
+            this.Padding = new System.Windows.Forms.Padding(12, 10, 12, 10);
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "AI生成提交信息";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.GenerationDialog_FormClosing);
+            this.mainSplit.Panel1.ResumeLayout(false);
+            this.mainSplit.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.mainSplit)).EndInit();
             this.fileListPanel.ResumeLayout(false);
             this.fileListPanel.PerformLayout();
             this.bottomPanel.ResumeLayout(false);
-            this.bottomPanel.PerformLayout();
             this.ResumeLayout(false);
+        }
+
+        // ── 圆角按钮（模仿 TSVN 深色模式的自绘 RoundRect 描边按钮） ─────
+
+        /// <summary>
+        /// 自绘圆角按钮：底色/描边/hover 色仍取自 BackColor/ForeColor/FlatAppearance，
+        /// 与 ApplyTheme 主题配色联动；文字用 TextRenderer 居中，禁用时置灰。
+        /// </summary>
+        private sealed class RoundedButton : Button
+        {
+            private const int CornerRadius = 4; // 圆角半径（px），近似 TSVN 本体观感
+            private bool _hover;
+            private bool _pressed;
+
+            public RoundedButton()
+            {
+                // 全自绘：不用系统按钮渲染，避免直角边框
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                         ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            }
+
+            protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+            protected override void OnMouseLeave(EventArgs e) { _hover = false; _pressed = false; Invalidate(); base.OnMouseLeave(e); }
+            protected override void OnMouseDown(MouseEventArgs e) { _pressed = true; Invalidate(); base.OnMouseDown(e); }
+            protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; Invalidate(); base.OnMouseUp(e); }
+            protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); Invalidate(); }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Parent != null ? Parent.BackColor : SystemColors.Control);
+
+                Color back = _pressed ? FlatAppearance.MouseDownBackColor
+                           : _hover && Enabled ? FlatAppearance.MouseOverBackColor
+                           : BackColor;
+                Color text = Enabled ? ForeColor : Color.FromArgb(0x87, 0x87, 0x87);
+
+                using (var path = RoundedPath(ClientRectangle, CornerRadius))
+                {
+                    using (var brush = new SolidBrush(back)) g.FillPath(brush, path);
+                    using (var pen = new Pen(FlatAppearance.BorderColor)) g.DrawPath(pen, path);
+                }
+
+                TextRenderer.DrawText(g, Text, Font, ClientRectangle, text,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            }
+
+            /// <summary>构建圆角矩形路径（右/下留 1px 给描边，避免被裁掉）。</summary>
+            private static GraphicsPath RoundedPath(Rectangle r, int radius)
+            {
+                var rect = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
+                int d = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
+                var path = new GraphicsPath();
+                if (d <= 0)
+                {
+                    path.AddRectangle(new Rectangle(0, 0, 1, 1));
+                    return path;
+                }
+                path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+                path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+                path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+                path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+                path.CloseFigure();
+                return path;
+            }
         }
     }
 }
