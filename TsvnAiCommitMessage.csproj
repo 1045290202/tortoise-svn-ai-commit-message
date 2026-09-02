@@ -30,6 +30,11 @@
     <None Include="agent-bridge\codebuddy-bridge.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 外置提示词模板，与桥接脚本同目录发布，运行时由脚本动态加载 -->
+    <None Remove="agent-bridge\commit-message-prompt.md" />
+    <None Include="agent-bridge\commit-message-prompt.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

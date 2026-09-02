@@ -17,9 +17,62 @@ namespace TsvnAiCommitMessage.Svn
     {
         // diff 内容上限，超出截断，避免超长 diff 拖垮请求
         private const int MaxDiffChars = 120000;
+        // status 输出上限，状态行较短，留足余量即可
+        private const int MaxStatusChars = 20000;
 
         /// <summary>最近一次 diff 获取失败的原因；成功或无变更时为 null。供 UI 透出排障。</summary>
         public static string LastError { get; private set; }
+
+        /// <summary>
+        /// 构建 svn 子命令的目标路径列表：优先用勾选的 PathList；
+        /// PathList 为空则回退整个 CommonRoot（wholeTree 置真，diff 无需再按路径过滤）。
+        /// </summary>
+        private static List<string> BuildTargets(CommitContext context, out bool wholeTree)
+        {
+            wholeTree = false;
+            var targets = new List<string>();
+            if (context.PathList != null && context.PathList.Length > 0)
+                targets.AddRange(context.PathList);
+            else if (!string.IsNullOrEmpty(context.CommonRoot))
+            {
+                targets.Add(context.CommonRoot);
+                wholeTree = true;
+            }
+            return targets;
+        }
+
+        /// <summary>
+        /// 获取本次变更的 svn status 输出（含 A/M/D/R/? 等状态码），供 agent 判断变更类型。
+        /// svn 不可用或执行失败时返回空字符串（不阻塞生成）。
+        /// </summary>
+        public static string TryGetStatus(CommitContext context)
+        {
+            try
+            {
+                string svnExe = FindSvnExe();
+                if (svnExe == null) return string.Empty;
+
+                bool wholeTree;
+                var targets = BuildTargets(context, out wholeTree);
+                if (targets.Count == 0) return string.Empty;
+
+                var args = new StringBuilder("status");
+                foreach (var target in targets)
+                    args.Append(' ').Append(QuoteArg(target));
+
+                string output = RunSvn(svnExe, args.ToString(), out _);
+                if (output == null) return string.Empty;
+
+                output = output.TrimEnd();
+                if (output.Length > MaxStatusChars)
+                    output = output.Substring(0, MaxStatusChars) + "\n...（status 过长已截断）";
+                return output;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
 
         /// <summary>获取变更内容；svn 不可用或执行失败时返回空字符串（不阻塞生成）。
         /// 结果按 svn diff 的 Index: 分块过滤，只保留本次勾选提交的路径。</summary>
@@ -36,22 +89,15 @@ namespace TsvnAiCommitMessage.Svn
                 }
 
                 // 优先只对本次提交所选路径做 diff；路径为空则 diff 整个共同根目录
-                bool wholeTree = false;
-                var targets = new List<string>();
-                if (context.PathList != null && context.PathList.Length > 0)
-                    targets.AddRange(context.PathList);
-                else if (!string.IsNullOrEmpty(context.CommonRoot))
-                {
-                    targets.Add(context.CommonRoot);
-                    wholeTree = true;
-                }
+                bool wholeTree;
+                var targets = BuildTargets(context, out wholeTree);
                 if (targets.Count == 0) return string.Empty;
 
                 var args = new StringBuilder("diff --git --internal-diff");
                 foreach (var target in targets)
                     args.Append(' ').Append(QuoteArg(target));
 
-                string output = RunSvnDiff(svnExe, args.ToString(), out string svnError);
+                string output = RunSvn(svnExe, args.ToString(), out string svnError);
                 if (output == null)
                 {
                     LastError = string.IsNullOrEmpty(svnError)
@@ -98,8 +144,8 @@ namespace TsvnAiCommitMessage.Svn
             return PathLocator.WhereExists("svn.exe") ? "svn.exe" : null;
         }
 
-        /// <summary>同步执行 svn diff（短超时，失败返回 null 并带出 stderr，不影响生成）。</summary>
-        private static string RunSvnDiff(string svnExe, string arguments, out string errorMessage)
+        /// <summary>同步执行 svn 子命令（diff/status 共用；短超时，失败返回 null 并带出 stderr，不影响生成）。</summary>
+        private static string RunSvn(string svnExe, string arguments, out string errorMessage)
         {
             errorMessage = null;
             var startInfo = new ProcessStartInfo

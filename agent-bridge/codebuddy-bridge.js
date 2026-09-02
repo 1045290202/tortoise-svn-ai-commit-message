@@ -8,11 +8,13 @@
  *   {
  *     "commonRoot":      "E:\\repo\\wc",          // 工作副本共同根目录
  *     "pathList":        ["E:\\repo\\wc\\a.cs"],  // 变更文件列表
+ *     "status":          "M   E:\\repo\\wc\\a.cs",// svn status 输出（含 A/M/D/R/? 状态码，可为空）
  *     "diff":            "Index: ...",            // svn diff 内容（可为空）
  *     "originalMessage": "用户已输入的日志",        // 可为空
  *     "timeoutMs":       180000,                  // 可选，默认 180000
  *     "model":           "hy4-preview",           // 可选，不传用 CLI 默认
- *     "cliPath":         "C:\\...\\cli\\bin\\codebuddy"  // 可选，覆盖 CLI 路径
+ *     "cliPath":         "C:\\...\\cli\\bin\\codebuddy",  // 可选，覆盖 CLI 路径
+ *     "promptPath":      "D:\\prompts"            // 可选，覆盖提示词文件/所在目录
  *   }
  *
  *   stdout 响应（行式 JSON 事件，便于宿主流式展示）：
@@ -39,6 +41,17 @@ const DEFAULT_CLI_PATH = 'C:\\Program Files\\WorkBuddy\\resources\\app.asar.unpa
 const DEFAULT_TIMEOUT_MS = 180000;
 const DIFF_HARD_LIMIT = 400000; // 桥接侧二次保险：diff 超过 40 万字符截断
 
+// 提示词外置：指令模板放在脚本同目录的 commit-message-prompt.md，运行时动态加载。
+// 解析优先级：请求 promptPath > 环境变量 WORKBUDDY_PROMPT_PATH > 同目录默认文件。
+const PROMPT_FILE_NAME = 'commit-message-prompt.md';
+// 兜底模板：外部文件缺失/读取失败时使用，保证插件永远能生成。
+const FALLBACK_INSTRUCTION = [
+    '你是 SVN 提交信息生成器。根据提供的变更信息，产出一条规范的提交日志。',
+    '首行格式：类型(范围): 摘要；类型取 feat/fix/refactor/style/docs/chore，摘要 ≤ 50 字符、中文、动词开头、不带句号。',
+    '忠实于 diff，不臆测；过滤 IDE/构建产物等噪音；只输出提交信息本身，不要解释或代码块包裹。',
+].join('\n');
+let instructionCache = null; // 进程内缓存，进程按次拉起，等价于每次调用读取最新文件
+
 // ── 工具 ────────────────────────────────────────────────────────────────
 
 function readStdin() {
@@ -64,30 +77,60 @@ function pickFreePort() {
     });
 }
 
+/**
+ * 解析指令模板文件路径：请求覆盖 > 环境变量 > 脚本同目录默认文件。
+ * 环境变量 WORKBUDDY_PROMPT_PATH 指向的目录（若为目录）或文件优先于同目录默认。
+ */
+function resolvePromptPath(req) {
+    const pick = (p) => {
+        if (!p) return null;
+        try {
+            if (fs.statSync(p).isDirectory()) return path.join(p, PROMPT_FILE_NAME);
+        } catch (_) { /* 不存在则按文件路径处理 */ }
+        return p;
+    };
+    return pick(req.promptPath) || pick(process.env.WORKBUDDY_PROMPT_PATH)
+        || path.join(__dirname, PROMPT_FILE_NAME);
+}
+
+/** 动态加载外部提示词（进程内缓存一次）；读不到则回退内置兜底模板。 */
+function loadInstruction(req) {
+    if (instructionCache != null) return instructionCache;
+    const promptPath = resolvePromptPath(req);
+    try {
+        const text = fs.readFileSync(promptPath, 'utf8').trim();
+        if (text) {
+            instructionCache = text;
+            return instructionCache;
+        }
+    } catch (_) { /* 文件缺失或不可读，走兜底 */ }
+    instructionCache = FALLBACK_INSTRUCTION;
+    return instructionCache;
+}
+
 function buildPrompt(req) {
     const lines = [];
-    lines.push('你是 SVN 提交信息生成器。请根据以下变更内容生成一条规范的提交信息（commit message）。');
-    lines.push('');
-    lines.push('要求：');
-    lines.push('- 第一行为总结：使用「动词开头的规范句式」（如：新增 / 修复 / 重构 / 优化 + 模块或功能名），不超过 50 字，中文，不加任何前缀。');
-    lines.push('- 描述变更的目的与影响，不罗列代码细节（避免具体文件名、函数名、行号、实现过程的逐条复述）。');
-    lines.push('- 仅在变更确属多个独立要点时，总结行之后空一行，用不超过三条的简短条目概括；简单变更只保留总结行。');
-    lines.push('- 只输出提交信息本身，不要解释、不要 markdown 代码块、不要引号。');
+    lines.push(loadInstruction(req));
 
     const paths = (req.pathList || []).slice(0, 50);
     if (paths.length) {
         lines.push('');
-        lines.push('变更文件：');
+        lines.push('## 变更文件清单（勾选待提交项）');
         for (const p of paths) lines.push('- ' + p);
+    }
+    if (req.status && req.status.trim()) {
+        lines.push('');
+        lines.push('## 变更状态（svn status，含 A/M/D/R/? 等状态码）');
+        lines.push(req.status);
     }
     if (req.diff && req.diff.trim()) {
         lines.push('');
-        lines.push('变更内容（svn diff）：');
+        lines.push('## 变更内容（svn diff）');
         lines.push(req.diff);
     }
     if (req.originalMessage && req.originalMessage.trim()) {
         lines.push('');
-        lines.push('用户已输入的日志内容（可作为意图参考，不要原样照抄）：');
+        lines.push('## 用户说明（可作为意图参考，不要原样照抄）');
         lines.push(req.originalMessage);
     }
     return lines.join('\n');

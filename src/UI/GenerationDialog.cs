@@ -417,7 +417,8 @@ namespace TsvnAiCommitMessage.UI
             this.insertButton.TabIndex = 1;
             this.insertButton.Text = "填入";
             this.insertButton.UseVisualStyleBackColor = false;
-            this.insertButton.UseWaitCursor = true;
+            // UseWaitCursor 不在此设置：完成后未复位会导致悬停一直是沙漏，
+            // 生成中的等待态由按钮 Enabled=false 体现即可。
             this.insertButton.Click += new System.EventHandler(this.insertButton_Click);
             //
             // cancelButton（锚定右上、固定尺寸）

@@ -70,11 +70,15 @@ namespace TsvnAiCommitMessage.Agent
                               + (string.IsNullOrEmpty(SvnDiffProvider.LastError) ? "" : $"（{SvnDiffProvider.LastError}）")
                               + "，仅按路径生成，正在打包请求…");
 
+                        dialog?.SetStep("正在获取 svn status…");
+                        string status = SvnDiffProvider.TryGetStatus(context);
+
                         var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                         string requestJson = serializer.Serialize(new Dictionary<string, object>
                         {
                             { "commonRoot", context.CommonRoot ?? "" },
                             { "pathList", context.PathList ?? Array.Empty<string>() },
+                            { "status", status ?? "" },
                             { "diff", diff },
                             { "originalMessage", context.OriginalMessage ?? "" },
                         });
