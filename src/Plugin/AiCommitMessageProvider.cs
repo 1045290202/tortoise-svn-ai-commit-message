@@ -83,18 +83,20 @@ namespace TsvnAiCommitMessage
             return GetCommitMessage(hParentWnd, parameters, commonRoot, pathList, originalMessage);
         }
 
-        // 提交前校验钩子：不拦截，原样放行。
+        // 提交前校验：官方契约是“返回空字符串才允许提交，返回非空则当作错误消息
+        // 弹窗并保持提交对话框打开”（IBugtraqProvider2.CheckCommit 文档）。
+        // 不拦截 = 必须返回 string.Empty，绝不能原样返回 commitMessage。
         public string CheckCommit(IntPtr hParentWnd, string parameters, string commonURL, string commonRoot,
             string[] pathList, string commitMessage)
         {
-            return commitMessage;
+            return string.Empty;
         }
 
-        // 提交完成回调：对日志内容不做修改，原样返回。
+        // 提交完成回调：返回值同样是“错误消息”语义（仅当需要向用户报错时才非空）。
         public string OnCommitFinished(IntPtr hParentWnd, string commonRoot, string[] pathList,
             string logMessage, int revision)
         {
-            return logMessage;
+            return string.Empty;
         }
 
         // 没有配置界面，TortoiseSVN 设置页不显示"选项"按钮。
