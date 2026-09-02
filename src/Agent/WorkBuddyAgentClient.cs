@@ -66,7 +66,9 @@ namespace TsvnAiCommitMessage.Agent
                         string diff = SvnDiffProvider.TryGetDiff(context);
                         dialog?.SetStep(diff.Length > 0
                             ? $"diff 获取完成（{diff.Length} 字符），正在打包请求…"
-                            : "未获取到 diff，仅按路径生成，正在打包请求…");
+                            : "未获取到 diff"
+                              + (string.IsNullOrEmpty(SvnDiffProvider.LastError) ? "" : $"（{SvnDiffProvider.LastError}）")
+                              + "，仅按路径生成，正在打包请求…");
 
                         var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                         string requestJson = serializer.Serialize(new Dictionary<string, object>
