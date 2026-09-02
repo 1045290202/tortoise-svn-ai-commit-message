@@ -66,11 +66,12 @@ function pickFreePort() {
 
 function buildPrompt(req) {
     const lines = [];
-    lines.push('你是 SVN 提交信息生成器。请根据以下变更内容生成一条提交信息（commit message）。');
+    lines.push('你是 SVN 提交信息生成器。请根据以下变更内容生成一条规范的提交信息（commit message）。');
     lines.push('');
     lines.push('要求：');
-    lines.push('- 第一行为简明总结（不超过 50 字，中文，不加任何前缀）。');
-    lines.push('- 若变更较复杂，总结行之后空一行，用简短的条目说明要点；简单变更则只保留总结行。');
+    lines.push('- 第一行为总结：使用「动词开头的规范句式」（如：新增 / 修复 / 重构 / 优化 + 模块或功能名），不超过 50 字，中文，不加任何前缀。');
+    lines.push('- 描述变更的目的与影响，不罗列代码细节（避免具体文件名、函数名、行号、实现过程的逐条复述）。');
+    lines.push('- 仅在变更确属多个独立要点时，总结行之后空一行，用不超过三条的简短条目概括；简单变更只保留总结行。');
     lines.push('- 只输出提交信息本身，不要解释、不要 markdown 代码块、不要引号。');
 
     const paths = (req.pathList || []).slice(0, 50);
