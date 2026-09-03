@@ -10,7 +10,7 @@ WorkBuddy CLI（`codebuddy -p`）。技术实现细节见 [docs/agent-bridge.md]
 ## 使用前提
 
 - TortoiseSVN（64 位，与插件位数一致）
-- WorkBuddy 桌面端已安装并登录（CLI 复用其认证，无需单独登录）
+- CodeBuddy CLI（`codebuddy` 命令，npm 全局安装即可；需已登录）
 - node.exe（按序探测 `WORKBUDDY_NODE` 环境变量 → `~/.workbuddy/binaries/node/versions/`
   → `%APPDATA%\nodejs\node.exe` → PATH）
 - svn.exe（注册表 `HKLM\SOFTWARE\TortoiseSVN\Directory` → PATH；不可用时无 diff

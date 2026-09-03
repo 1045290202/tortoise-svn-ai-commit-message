@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * codebuddy-bridge.js —— TortoiseSVN 插件与 WorkBuddy CLI 之间的桥接进程
+ * codebuddy-bridge.js —— TortoiseSVN 插件与 CodeBuddy CLI（codebuddy 命令）之间的桥接进程
  *
  * 协议（stdin → stdout，均为 UTF-8）：
  *
@@ -13,7 +13,7 @@
  *     "originalMessage": "用户已输入的日志",        // 可为空
  *     "timeoutMs":       180000,                  // 可选，默认 180000
  *     "model":           "hy4-preview",           // 可选，不传用 CLI 默认
- *     "cliPath":         "C:\\...\\cli\\bin\\codebuddy",  // 可选，覆盖 CLI 路径
+ *     "cliPath":         "codebuddy",             // 可选，覆盖 CLI 命令/路径（默认直接用 PATH 上的 codebuddy）
  *     "promptPath":      "D:\\prompts"            // 可选，覆盖提示词文件/所在目录
  *   }
  *
@@ -36,7 +36,6 @@ const net = require('net');
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_CLI_PATH = 'C:\\Program Files\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy';
 const DEFAULT_TIMEOUT_MS = 180000;
 const DIFF_HARD_LIMIT = 400000; // 桥接侧二次保险：diff 超过 40 万字符截断
 
@@ -147,6 +146,15 @@ function clipDiff(diff) {
     return { text: picked.join(''), omitted };
 }
 
+/** CLI 入口：默认直接用 PATH 上已注册的 `codebuddy` 命令，请求 cliPath 可覆盖。 */
+const DEFAULT_CLI_COMMAND = 'codebuddy';
+
+/** shell 模式引号包装：空参数必须给 ""，含空格/中文的参数整体加引号，内部引号翻倍。 */
+function quoteArg(a) {
+    if (a === '') return '""';
+    return /^[A-Za-z0-9_@%+=:,./\\-]+$/.test(a) ? a : '"' + a.replace(/"/g, '""') + '"';
+}
+
 function buildPrompt(req) {
     const lines = [];
     lines.push(loadInstruction(req));
@@ -203,11 +211,12 @@ async function main() {
         process.exit(1);
     }
 
-    const cliPath = req.cliPath || process.env.WORKBUDDY_CLI_PATH || DEFAULT_CLI_PATH;
+    const cliPath = req.cliPath || DEFAULT_CLI_COMMAND;
     const timeoutMs = Number(req.timeoutMs) > 0 ? Number(req.timeoutMs) : DEFAULT_TIMEOUT_MS;
 
-    if (!fs.existsSync(cliPath)) {
-        emit({ type: 'error', error: 'CLI 不存在: ' + cliPath });
+    // 命令行方式（shell 解析 PATH）无法预检存在性；仅当显式指定了文件路径时校验
+    if (req.cliPath && !fs.existsSync(req.cliPath)) {
+        emit({ type: 'error', error: 'CLI 不存在: ' + req.cliPath });
         process.exit(1);
     }
 
@@ -227,20 +236,24 @@ async function main() {
     //                         commands/记忆）按 cwd 向上扫描发现，空目录=全失效；
     //   CODEBUDDY_DISABLE_AUTO_MEMORY=1
     //                         CLI 内部短路 isAutoMemoryEnabled，记忆注入跳过。
-    const args = [cliPath, '-p',
-        '完整任务说明已通过标准输入提供（含变更文件清单、svn diff 等），请读取并按其执行。',
+    // 直接以命令行方式拉起（shell 解析 PATH，等价于在 pwsh 里敲 codebuddy）。
+    // shell 模式会原样拼接参数，必须经 quoteArg 包装，否则 --tools "" 这类
+    // 空参数会丢失、含空格参数会被切分。
+    const args = [quoteArg(cliPath), '-p',
+        quoteArg('完整任务说明已通过标准输入提供（含变更文件清单、svn diff 等），请读取并按其执行。'),
         '--output-format', 'stream-json', '--include-partial-messages', '--verbose',
         '--no-session-persistence',
-        '--tools', '',
-        '--setting-sources', '',
+        '--tools', '""',
+        '--setting-sources', '""',
         '--strict-mcp-config'];
-    if (req.model) args.push('--model', req.model);
+    if (req.model) args.push('--model', quoteArg(req.model));
 
     // 空隔离 cwd：确保不落到任何含 .codebuddy / CODEBUDDY.md 的目录
     const isolatedCwd = path.join(__dirname, '.isolated-cwd');
     try { fs.mkdirSync(isolatedCwd, { recursive: true }); } catch (_) { /* 已存在则忽略 */ }
 
-    const child = spawn(process.execPath, args, {
+    const child = spawn(args.join(' '), {
+        shell: true,
         cwd: isolatedCwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
@@ -255,6 +268,16 @@ async function main() {
     child.stdin.on('error', () => { /* CLI 提前退出导致 EPIPE，由 exit/error 分支统一兜底 */ });
     child.stdin.end(prompt, 'utf8');
 
+    // shell 模式下 child 是 cmd.exe 外壳，直接 kill 会留下 CLI 孤儿进程，
+    // 必须按进程树强杀（/T 连同子进程、/F 强制）
+    const killTree = () => {
+        if (child.pid) {
+            try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'],
+                { windowsHide: true, stdio: 'ignore' }); } catch (_) { /* 已退出 */ }
+        }
+        try { child.kill('SIGKILL'); } catch (_) { /* 已退出 */ }
+    };
+
     let stderrTail = '';
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', d => { stderrTail = (stderrTail + d).slice(-2000); });
@@ -262,7 +285,7 @@ async function main() {
     let sawResult = false;
     const timer = setTimeout(() => {
         emit({ type: 'error', error: 'CLI 调用超时（' + Math.round(timeoutMs / 1000) + 's）' });
-        child.kill('SIGKILL');
+        killTree();
         setTimeout(() => process.exit(1), 200);
     }, timeoutMs);
 
@@ -306,15 +329,15 @@ async function main() {
             clearTimeout(timer);
             if (msg.is_error) {
                 emit({ type: 'error', error: 'CLI 返回错误' + (stderrTail ? '：' + stderrTail.trim().slice(0, 300) : '') });
-                child.kill('SIGKILL');
+                killTree();
                 setTimeout(() => process.exit(1), 200);
             } else if (msg.result && String(msg.result).trim()) {
                 emit({ type: 'done', message: String(msg.result).trim() });
-                child.kill('SIGKILL'); // result 已拿到，立即收尾（CLI 事件循环可能不退出）
+                killTree(); // result 已拿到，立即收尾（CLI 事件循环可能不退出）
                 setTimeout(() => process.exit(0), 200);
             } else {
                 emit({ type: 'error', error: 'CLI 返回空提交信息' });
-                child.kill('SIGKILL');
+                killTree();
                 setTimeout(() => process.exit(1), 200);
             }
         }

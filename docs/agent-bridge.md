@@ -29,7 +29,7 @@ stdin 收单个 JSON 请求：
 | `originalMessage` | 用户已输入的日志（可为空） |
 | `timeoutMs` | 可选，默认 180000 |
 | `model` | 可选，不传用 CLI 默认 |
-| `cliPath` | 可选，覆盖 CLI 路径 |
+| `cliPath` | 可选，覆盖 CLI 命令/路径（默认直接用 PATH 上的 `codebuddy`） |
 | `promptPath` | 可选，覆盖提示词文件/所在目录 |
 
 stdout 回**行式 JSON 事件**：
@@ -43,6 +43,21 @@ done/error 之后进程退出；exit code 0=成功 1=失败。
 提示词模板外置在脚本同目录 `commit-message-prompt.md`，解析优先级：
 请求 `promptPath` > 环境变量 `WORKBUDDY_PROMPT_PATH` > 同目录默认文件；
 读不到时回退内置兜底模板。
+
+## CLI 拉起方式与参数引号
+
+CLI 以命令行方式直接拉起：`spawn('codebuddy ...', { shell: true })`，等价于在
+pwsh/cmd 里直接敲 `codebuddy`（PATH 上已注册，来自 npm 全局包
+`@tencent-ai/codebuddy-code`）。默认不依赖 WorkBuddy 桌面端内部路径。
+
+注意 shell 模式会**原样拼接**参数字符串，因此所有参数必须经 `quoteArg` 包装：
+
+- 空参数必须给 `""`，否则直接丢失（`--tools ""` 会变成孤旗 `--tools`）；
+- 含空格/中文的参数整体加引号，内部引号翻倍（cmd.exe 规则）。
+
+连带问题：shell 模式下 spawn 的直接子进程是 cmd.exe 外壳，`child.kill` 只杀
+外壳会留下 CLI 孤儿进程，因此收尾统一走 `killTree()`（`taskkill /pid /T /F`
+按进程树强杀 + `child.kill` 兜底）。
 
 ## 长 prompt 走 stdin
 
