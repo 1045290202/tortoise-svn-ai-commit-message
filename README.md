@@ -17,7 +17,7 @@ CodeBuddy CLI。技术实现细节见 [docs/agent-bridge.md](docs/agent-bridge.m
 
 ## 安装
 
-1. 构建：Rider 打开根目录 `TsvnAiCommitMessage.sln`，Build（Ctrl+Shift+B），
+1. 构建：Rider 打开根目录 `TsvnAiCommitMessage.sln`，Build，
    或运行 `register.cmd [Debug|Release]` 注册；注销用 `unregister.cmd`。
    位数必须与 TortoiseSVN 宿主一致（本机 64 位用 `-Platform x64`）。
 2. 在工作副本上启用——注册后还需设置属性才会出现在提交对话框：
