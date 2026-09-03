@@ -108,6 +108,46 @@ function loadInstruction(req) {
     return instructionCache;
 }
 
+// ── diff 预算与降级 ─────────────────────────────────────────────────────
+// 主流提交信息生成器（Copilot/JetBrains/TortoiseGit）都传 diff，但都设预算。
+// 40 万字符 ≈ 10 万+ token，既可能超上下文，模型注意力也散。三级策略：
+//   1) diff ≤ DIFF_BUDGET          → 全量传，质量最好；
+//   2) DIFF_BUDGET < diff ≤ 跳过线 → 按「Index: 文件」分块贪心打包到预算内，
+//                                     未收录文件靠 status/文件清单兜底（仍可见）；
+//   3) diff > DIFF_SKIP_THRESHOLD  → 放弃 diff，只传 status + 文件清单。
+const DIFF_BUDGET = 50000;        // diff 预算（字符），≈ 1.5 万 token
+const DIFF_SKIP_THRESHOLD = 250000; // 超过此长度直接不传 diff（极端大提交）
+
+/** 把 svn diff 按「Index: 文件」切成块；返回 [前导头, ...各文件块]。 */
+function splitDiffSections(diff) {
+    return diff.split(/(?=^Index: )/m).filter(s => s.trim());
+}
+
+/**
+ * 按预算裁剪 diff。返回 { text, omitted }：
+ *   text     实际放进 prompt 的 diff 内容（可为 ''，表示整体放弃）；
+ *   omitted  因预算被排除的文件数（0 = 全量）。
+ */
+function clipDiff(diff) {
+    if (diff.length > DIFF_SKIP_THRESHOLD) return { text: '', omitted: -1 };
+    if (diff.length <= DIFF_BUDGET) return { text: diff, omitted: 0 };
+
+    const sections = splitDiffSections(diff);
+    const picked = [];
+    let used = 0, omitted = 0;
+    for (const sec of sections) {
+        if (used + sec.length <= DIFF_BUDGET || picked.length === 0) {
+            // 第一个文件块即使超预算也要保一份，否则什么意图都推不出来
+            if (picked.length > 0 && used + sec.length > DIFF_BUDGET) { omitted++; continue; }
+            picked.push(sec);
+            used += sec.length;
+        } else {
+            omitted++;
+        }
+    }
+    return { text: picked.join(''), omitted };
+}
+
 function buildPrompt(req) {
     const lines = [];
     lines.push(loadInstruction(req));
@@ -124,9 +164,21 @@ function buildPrompt(req) {
         lines.push(req.status);
     }
     if (req.diff && req.diff.trim()) {
+        const { text, omitted } = clipDiff(req.diff);
         lines.push('');
-        lines.push('## 变更内容（svn diff）');
-        lines.push(req.diff);
+        if (omitted === -1) {
+            lines.push('## 变更内容（diff 过大已整体省略）');
+            lines.push('（本次变更 diff 超过 ' + Math.round(DIFF_SKIP_THRESHOLD / 1000) + 'K 字符，未随附。');
+            lines.push('请仅依据上方的变更状态与文件清单推断整体意图，摘要保持宽泛。）');
+        } else if (omitted > 0) {
+            lines.push('## 变更内容（svn diff，已按预算收录部分文件）');
+            lines.push('（diff 过长，已收录预算内前若干文件的完整变更，另有 ' + omitted + ' 个文件未收录，');
+            lines.push('其改动可参考变更状态。请结合清单判断整体意图，不要臆测未收录内容。）');
+            lines.push(text);
+        } else {
+            lines.push('## 变更内容（svn diff）');
+            lines.push(text);
+        }
     }
     if (req.originalMessage && req.originalMessage.trim()) {
         lines.push('');
@@ -160,25 +212,29 @@ async function main() {
         process.exit(1);
     }
 
-    if (req.diff && req.diff.length > DIFF_HARD_LIMIT) {
-        req.diff = req.diff.slice(0, DIFF_HARD_LIMIT) + '\n...（diff 过长已截断）';
-    }
-
     const prompt = buildPrompt(req);
     const serverPort = await pickFreePort();
 
     // stream-json + partial：把思考/回答增量逐行吐给宿主，供弹窗实时展示
-    const args = [cliPath, '-p', prompt,
+    // 长 prompt 不能放命令行参数：Windows CreateProcess 命令行上限约 32K 字符，
+    // diff 一大就报 ENAMETOOLONG。官方支持管道输入（stdin 与 -p 短指令合并），
+    // 因此完整 prompt 走 stdin，-p 只留一句定位指令。
+    const args = [cliPath, '-p',
+        '完整任务说明已通过标准输入提供（含变更文件清单、svn diff 等），请读取并按其执行。',
         '--output-format', 'stream-json', '--include-partial-messages', '--verbose',
         '--no-session-persistence'];
     if (req.model) args.push('--model', req.model);
 
     const child = spawn(process.execPath, args, {
         cwd: req.commonRoot && fs.existsSync(req.commonRoot) ? req.commonRoot : os.homedir(),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         env: Object.assign({}, process.env, { SERVER__PORT: String(serverPort) }),
     });
+
+    // 写入完整 prompt 后立即关闭 stdin，通知 CLI 输入结束
+    child.stdin.on('error', () => { /* CLI 提前退出导致 EPIPE，由 exit/error 分支统一兜底 */ });
+    child.stdin.end(prompt, 'utf8');
 
     let stderrTail = '';
     child.stderr.setEncoding('utf8');
