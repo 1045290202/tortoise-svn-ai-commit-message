@@ -6,16 +6,14 @@ TortoiseSVN 提交对话框插件（GitHub 仓库 `tortoise-svn-ai-commit-messag
 （AI 思考与生成内容），可随时取消。
 
 基于 `IBugtraqProvider` COM 接口（.NET 实现），AI 能力走本机已安装的
-WorkBuddy CLI（`codebuddy -p`）。技术实现细节见 [docs/agent-bridge.md](docs/agent-bridge.md)。
+CodeBuddy CLI。技术实现细节见 [docs/agent-bridge.md](docs/agent-bridge.md)。
 
 ## 使用前提
 
 - TortoiseSVN（64 位，与插件位数一致）
 - CodeBuddy CLI（`codebuddy` 命令，npm 全局安装即可；需已登录）
-- node.exe（按序探测 `WORKBUDDY_NODE` 环境变量 → `~/.workbuddy/binaries/node/versions/`
-  → `%APPDATA%\nodejs\node.exe` → PATH）
-- svn.exe（注册表 `HKLM\SOFTWARE\TortoiseSVN\Directory` → PATH；不可用时无 diff
-  也能生成，仅靠文件清单）
+- node.js
+- svn
 
 ## 安装
 
