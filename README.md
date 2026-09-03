@@ -15,11 +15,14 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
     → 桥接脚本以 `--output-format stream-json` 调 CLI → 逐行解析事件回填窗体
     → 完成后自动关闭并填入日志框
   - 生成失败、超时或用户取消时，保留用户已输入的内容
-  - diff 超过 120k 字符会截断；单次生成超时约 180s
+  - diff 按预算降级：≤50k 字符全量；超预算按「Index: 文件」分块打包进预算
+    （未收录文件数写入提示词，靠文件清单/状态兜底）；超过 250k 字符整体放弃
+    diff，仅传文件清单 + svn status。单次生成超时约 180s
 
 ### 桥接层要点（agent-bridge/codebuddy-bridge.js）
 
-- 协议：stdin 收 JSON（`commonRoot` / `pathList` / `diff` / `originalMessage`），
+- 协议：stdin 收 JSON（`commonRoot` / `pathList` / `status` / `diff` /
+  `originalMessage`，另有可选 `timeoutMs` / `model` / `cliPath` / `promptPath`），
   stdout 回**行式 JSON 事件**：
   - `{"type":"delta","kind":"thinking","text":...}` —— AI 思考增量（弹窗灰色区）
   - `{"type":"delta","kind":"text","text":...}` —— 生成结果增量（弹窗黑色区）
@@ -27,9 +30,22 @@ TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一�
 - **关键坑**：CLI 内部服务默认监听 `127.0.0.1:10003`，与 WorkBuddy 桌面端冲突时
   进程会静默挂死（EADDRINUSE 未处理）。桥接脚本每次调用前随机挑一个空闲端口，
   通过 `SERVER__PORT` 环境变量传给 CLI 规避。
-- CLI 解析：`-p --output-format stream-json --include-partial-messages`，
-  取 `stream_event.event.delta` 的 `thinking_delta` / `text_delta`，
-  末尾 `type === "result"` 条目的 `result` 字段为最终文本。
+- **长 prompt 走 stdin**：Windows `CreateProcess` 命令行上限约 32K 字符，整段
+  prompt 放 `-p` 参数会报 `ENAMETOOLONG`。桥接在 `-p` 里只留一句短指令，
+  spawn 后把完整 prompt 写入子进程 stdin（官方支持的管道输入，与 `-p` 合并）。
+- **环境隔离**（只受桥接传入提示词影响，屏蔽用户/项目全部配置）：
+  - `--tools ""` —— 禁用全部内置工具：无法读写文件，无法调用 Skill/MCP；
+  - `--setting-sources ""` —— settings.json 的 user/project/local 来源全不加载；
+  - `--strict-mcp-config` —— 未传 `--mcp-config` 时不加载任何 MCP 服务器；
+  - 子进程 cwd 指向桥接目录下的空隔离目录（`.isolated-cwd`）——项目级
+    `CODEBUDDY.md` 与 `.codebuddy/`（rules/skills/commands/记忆）按 cwd 向上
+    扫描发现，空目录即全失效；
+  - `CODEBUDDY_DISABLE_AUTO_MEMORY=1` + `CODEBUDDY_MEMORY_ENABLED=false` ——
+    短路 CLI 记忆注入。
+- CLI 解析：`-p --output-format stream-json --include-partial-messages --verbose
+  --no-session-persistence`，取 `stream_event.event.delta` 的
+  `thinking_delta` / `text_delta`，末尾 `type === "result"` 条目的 `result`
+  字段为最终文本。
 
 ### 运行依赖
 
