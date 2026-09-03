@@ -8,6 +8,8 @@ TortoiseSVN 提交对话框插件（GitHub 仓库 `tortoise-svn-ai-commit-messag
 基于 `IBugtraqProvider` COM 接口（.NET 实现），AI 能力走本机已安装的
 CodeBuddy CLI。技术实现细节见 [docs/agent-bridge.md](docs/agent-bridge.md)。
 
+![提交对话框中的 AI 生成提交信息](docs/images/commit-dialog.png)
+
 ## 使用前提
 
 - TortoiseSVN（64 位，与插件位数一致）
