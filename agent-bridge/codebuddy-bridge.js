@@ -35,7 +35,6 @@ const { spawn } = require('child_process');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const DEFAULT_CLI_PATH = 'C:\\Program Files\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy';
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -219,17 +218,37 @@ async function main() {
     // 长 prompt 不能放命令行参数：Windows CreateProcess 命令行上限约 32K 字符，
     // diff 一大就报 ENAMETOOLONG。官方支持管道输入（stdin 与 -p 短指令合并），
     // 因此完整 prompt 走 stdin，-p 只留一句定位指令。
+    //
+    // 环境隔离（只受本桥接传入的提示词影响，屏蔽用户/项目所有配置）：
+    //   --tools ""            禁用全部内置工具 → 无法读写文件、无法调用 Skill/MCP；
+    //   --setting-sources ""  settings.json 的 user/project/local 来源全部不加载；
+    //   --strict-mcp-config   无 --mcp-config 时即不加载任何 MCP 服务器；
+    //   cwd 指向空隔离目录     项目级 CODEBUDDY.md / .codebuddy（rules/skills/
+    //                         commands/记忆）按 cwd 向上扫描发现，空目录=全失效；
+    //   CODEBUDDY_DISABLE_AUTO_MEMORY=1
+    //                         CLI 内部短路 isAutoMemoryEnabled，记忆注入跳过。
     const args = [cliPath, '-p',
         '完整任务说明已通过标准输入提供（含变更文件清单、svn diff 等），请读取并按其执行。',
         '--output-format', 'stream-json', '--include-partial-messages', '--verbose',
-        '--no-session-persistence'];
+        '--no-session-persistence',
+        '--tools', '',
+        '--setting-sources', '',
+        '--strict-mcp-config'];
     if (req.model) args.push('--model', req.model);
 
+    // 空隔离 cwd：确保不落到任何含 .codebuddy / CODEBUDDY.md 的目录
+    const isolatedCwd = path.join(__dirname, '.isolated-cwd');
+    try { fs.mkdirSync(isolatedCwd, { recursive: true }); } catch (_) { /* 已存在则忽略 */ }
+
     const child = spawn(process.execPath, args, {
-        cwd: req.commonRoot && fs.existsSync(req.commonRoot) ? req.commonRoot : os.homedir(),
+        cwd: isolatedCwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
-        env: Object.assign({}, process.env, { SERVER__PORT: String(serverPort) }),
+        env: Object.assign({}, process.env, {
+            SERVER__PORT: String(serverPort),
+            CODEBUDDY_DISABLE_AUTO_MEMORY: '1',
+            CODEBUDDY_MEMORY_ENABLED: 'false',
+        }),
     });
 
     // 写入完整 prompt 后立即关闭 stdin，通知 CLI 输入结束
