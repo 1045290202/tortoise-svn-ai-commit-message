@@ -36,8 +36,19 @@ const net = require('net');
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_TIMEOUT_MS = 180000;
-const DIFF_HARD_LIMIT = 400000; // 桥接侧二次保险：diff 超过 40 万字符截断
+// ── 常量 ────────────────────────────────────────────────────────────────
+
+const DEFAULT_TIMEOUT_MS = 180000;      // 单次生成超时
+const DEFAULT_CLI_COMMAND = 'codebuddy'; // CLI 入口：PATH 上已注册的 codebuddy 命令
+
+// diff 预算降级（主流提交信息生成器都传 diff，但都设预算——塞太多既费 token
+// 又稀释模型注意力）。三级策略：
+//   1) diff ≤ DIFF_BUDGET          → 全量传，质量最好；
+//   2) DIFF_BUDGET < diff ≤ 跳过线 → 按「Index: 文件」分块贪心打包到预算内，
+//                                     未收录文件靠 status/文件清单兜底（仍可见）；
+//   3) diff > DIFF_SKIP_THRESHOLD  → 放弃 diff，只传 status + 文件清单。
+const DIFF_BUDGET = 50000;          // diff 预算（字符），≈ 1.5 万 token
+const DIFF_SKIP_THRESHOLD = 250000; // 超过此长度直接不传 diff（极端大提交）
 
 // 提示词外置：指令模板放在脚本同目录的 commit-message-prompt.md，运行时动态加载。
 // 解析优先级：请求 promptPath > 环境变量 WORKBUDDY_PROMPT_PATH > 同目录默认文件。
@@ -107,14 +118,6 @@ function loadInstruction(req) {
 }
 
 // ── diff 预算与降级 ─────────────────────────────────────────────────────
-// 主流提交信息生成器（Copilot/JetBrains/TortoiseGit）都传 diff，但都设预算。
-// 40 万字符 ≈ 10 万+ token，既可能超上下文，模型注意力也散。三级策略：
-//   1) diff ≤ DIFF_BUDGET          → 全量传，质量最好；
-//   2) DIFF_BUDGET < diff ≤ 跳过线 → 按「Index: 文件」分块贪心打包到预算内，
-//                                     未收录文件靠 status/文件清单兜底（仍可见）；
-//   3) diff > DIFF_SKIP_THRESHOLD  → 放弃 diff，只传 status + 文件清单。
-const DIFF_BUDGET = 50000;        // diff 预算（字符），≈ 1.5 万 token
-const DIFF_SKIP_THRESHOLD = 250000; // 超过此长度直接不传 diff（极端大提交）
 
 /** 把 svn diff 按「Index: 文件」切成块；返回 [前导头, ...各文件块]。 */
 function splitDiffSections(diff) {
@@ -145,9 +148,6 @@ function clipDiff(diff) {
     }
     return { text: picked.join(''), omitted };
 }
-
-/** CLI 入口：默认直接用 PATH 上已注册的 `codebuddy` 命令，请求 cliPath 可覆盖。 */
-const DEFAULT_CLI_COMMAND = 'codebuddy';
 
 /** shell 模式引号包装：空参数必须给 ""，含空格/中文的参数整体加引号，内部引号翻倍。 */
 function quoteArg(a) {
