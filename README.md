@@ -1,6 +1,7 @@
-# TsvnAiCommitMessage
+# TortoiseSVN AI Commit Message
 
-TortoiseSVN 提交对话框插件：在提交信息输入框右上角增加一个「AI生成提交信息」按钮，
+TortoiseSVN 提交对话框插件（GitHub 仓库 `tortoise-svn-ai-commit-message`，
+插件程序集 `TsvnAiCommitMessage`）：在提交信息输入框右上角增加一个「AI生成提交信息」按钮，
 点击后由 AI 生成提交信息并回填到日志框。生成过程在独立进度窗体中实时流式展示
 （AI 思考与生成内容），可随时取消。
 
